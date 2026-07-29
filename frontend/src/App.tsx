@@ -164,139 +164,73 @@ function polyPointsAttr(poly: number[][], scaleX: number, scaleY: number): strin
   return poly.map((p) => `${p[0] * scaleX},${p[1] * scaleY}`).join(" ");
 }
 
-type LayoutBox = {
+/** Geometría de lectura desde el quad de Paddle (p0→p1 = línea de texto). */
+type OrientedRegion = {
   id: number;
   text: string;
   confidence: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  poly: number[][];
+  cx: number;
+  cy: number;
+  angleDeg: number;
+  textWidth: number;
+  textHeight: number;
+  labelX: number;
+  labelY: number;
 };
 
-type InflatedLayout = {
-  regions: LayoutBox[];
-  canvasW: number;
-  canvasH: number;
-  inflated: boolean;
-};
+function regionFromPoly(r: Region): OrientedRegion {
+  const poly =
+    Array.isArray(r.poly) && r.poly.length >= 2
+      ? r.poly
+      : [
+          [r.bbox.x, r.bbox.y],
+          [r.bbox.x + r.bbox.width, r.bbox.y],
+          [r.bbox.x + r.bbox.width, r.bbox.y + r.bbox.height],
+          [r.bbox.x, r.bbox.y + r.bbox.height],
+        ];
 
-function boxesOverlap(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-  pad = 0
-) {
-  return !(
-    a.x + a.width + pad <= b.x ||
-    b.x + b.width + pad <= a.x ||
-    a.y + a.height + pad <= b.y ||
-    b.y + b.height + pad <= a.y
-  );
-}
+  const p0 = poly[0];
+  const p1 = poly[1] ?? poly[0];
+  const p3 = poly[3] ?? poly[poly.length - 1] ?? poly[0];
 
-function crowdedIdsFromOverlaps(boxes: LayoutBox[], pad = 6): Set<number> {
-  const crowded = new Set<number>();
-  for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      if (!boxesOverlap(boxes[i], boxes[j], pad)) continue;
-      crowded.add(boxes[i].id);
-      crowded.add(boxes[j].id);
-    }
+  const dx = p1[0] - p0[0];
+  const dy = p1[1] - p0[1];
+  const textWidth = Math.hypot(dx, dy) || Math.max(r.bbox.width, 1);
+  const textHeight =
+    Math.hypot(p3[0] - p0[0], p3[1] - p0[1]) || Math.max(r.bbox.height, 1);
+  const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+  let cx = 0;
+  let cy = 0;
+  for (const p of poly) {
+    cx += p[0];
+    cy += p[1];
   }
-  return crowded;
-}
+  cx /= poly.length;
+  cy /= poly.length;
 
-function inflateIfCrowded(regions: Region[], imgW: number, imgH: number): InflatedLayout {
-  const base: LayoutBox[] = regions.map((r) => ({
+  return {
     id: r.id,
     text: r.text,
     confidence: r.confidence,
-    x: r.bbox.x,
-    y: r.bbox.y,
-    width: Math.max(r.bbox.width, 1),
-    height: Math.max(r.bbox.height, 1),
-  }));
+    poly,
+    cx,
+    cy,
+    angleDeg,
+    textWidth,
+    textHeight,
+    labelX: r.bbox.x + r.bbox.width,
+    labelY: r.bbox.y,
+  };
+}
 
-  if (!base.length) {
-    return { regions: [], canvasW: imgW, canvasH: imgH, inflated: false };
-  }
-
-  const pad = 6;
-  const crowdedIds = crowdedIdsFromOverlaps(base, pad);
-  if (!crowdedIds.size) {
-    return { regions: base, canvasW: imgW, canvasH: imgH, inflated: false };
-  }
-
-  const boxes = base.map((b) => ({ ...b }));
-  const crowded = boxes.filter((b) => crowdedIds.has(b.id));
-  const cx = crowded.reduce((s, b) => s + b.x + b.width / 2, 0) / crowded.length;
-  const cy = crowded.reduce((s, b) => s + b.y + b.height / 2, 0) / crowded.length;
-  const expand = 1.4;
-
-  for (const b of crowded) {
-    const mx = b.x + b.width / 2;
-    const my = b.y + b.height / 2;
-    const nx = cx + (mx - cx) * expand;
-    const ny = cy + (my - cy) * expand;
-    b.x = nx - b.width / 2;
-    b.y = ny - b.height / 2;
-  }
-
-  const iterations = 30;
-  for (let iter = 0; iter < iterations; iter++) {
-    for (let i = 0; i < boxes.length; i++) {
-      for (let j = i + 1; j < boxes.length; j++) {
-        const a = boxes[i];
-        const b = boxes[j];
-        if (!boxesOverlap(a, b, pad)) continue;
-        if (!crowdedIds.has(a.id) && !crowdedIds.has(b.id)) continue;
-        const ax = a.x + a.width / 2;
-        const ay = a.y + a.height / 2;
-        const bx = b.x + b.width / 2;
-        const by = b.y + b.height / 2;
-        let dx = bx - ax;
-        let dy = by - ay;
-        const dist = Math.hypot(dx, dy) || 1;
-        dx /= dist;
-        dy /= dist;
-        const push = 2.5;
-        if (crowdedIds.has(a.id)) {
-          a.x -= dx * push;
-          a.y -= dy * push;
-        }
-        if (crowdedIds.has(b.id)) {
-          b.x += dx * push;
-          b.y += dy * push;
-        }
-      }
-    }
-  }
-
-  let minX = 0;
-  let minY = 0;
-  let maxX = imgW;
-  let maxY = imgH;
-  for (const b of boxes) {
-    minX = Math.min(minX, b.x);
-    minY = Math.min(minY, b.y);
-    maxX = Math.max(maxX, b.x + b.width);
-    maxY = Math.max(maxY, b.y + b.height);
-  }
-  const margin = 12;
-  const offsetX = minX < 0 ? -minX + margin : 0;
-  const offsetY = minY < 0 ? -minY + margin : 0;
-  if (offsetX || offsetY) {
-    for (const b of boxes) {
-      b.x += offsetX;
-      b.y += offsetY;
-    }
-    maxX += offsetX;
-    maxY += offsetY;
-  }
-  const canvasW = Math.max(imgW, maxX + margin);
-  const canvasH = Math.max(imgH, maxY + margin);
-
-  return { regions: boxes, canvasW, canvasH, inflated: true };
+function buildResultLayout(regions: Region[], imgW: number, imgH: number) {
+  return {
+    regions: regions.map(regionFromPoly),
+    canvasW: Math.max(imgW, 1),
+    canvasH: Math.max(imgH, 1),
+  };
 }
 
 export default function App() {
@@ -559,9 +493,9 @@ export default function App() {
 
   const resultLayout = useMemo(() => {
     if (!selected?.result) {
-      return { regions: [] as LayoutBox[], canvasW: 1, canvasH: 1, inflated: false };
+      return { regions: [] as OrientedRegion[], canvasW: 1, canvasH: 1 };
     }
-    return inflateIfCrowded(
+    return buildResultLayout(
       selected.result.regions,
       selected.result.width,
       selected.result.height
@@ -1083,15 +1017,8 @@ export default function App() {
                 {resultLayout.regions.map((r, i) => {
                   const color = PALETTE[i % PALETTE.length];
                   const active = hoveredRegion === r.id;
-                  const vertical = r.height > r.width * 1.4 && r.text.length > 1;
-                  const fontSize = Math.max(
-                    (vertical ? r.width : r.height) * 0.85,
-                    8
-                  );
-                  const labelSize = Math.max(
-                    Math.min((vertical ? r.width : r.height) * 0.35, 14),
-                    8
-                  );
+                  const fontSize = Math.max(r.textHeight * 0.85, 1);
+                  const labelSize = Math.max(Math.min(r.textHeight * 0.35, 14), 8);
                   return (
                     <g
                       key={r.id}
@@ -1100,35 +1027,29 @@ export default function App() {
                       onClick={() => scrollToRegion(r.id)}
                       style={{ cursor: "pointer" }}
                     >
-                      <rect
-                        x={r.x}
-                        y={r.y}
-                        width={r.width}
-                        height={r.height}
+                      <polygon
+                        points={polyPointsAttr(r.poly, 1, 1)}
                         fill={active ? `${color}18` : "none"}
                         stroke={color}
                         strokeWidth={active ? 2.5 : 1.5}
-                        rx={2}
                       />
                       <text
-                        x={vertical ? 0 : r.x}
-                        y={vertical ? 0 : r.y + r.height * 0.82}
+                        x={0}
+                        y={0}
                         fill="#111827"
                         fontSize={fontSize}
                         fontFamily="system-ui, sans-serif"
-                        textLength={Math.max(vertical ? r.height : r.width, 1)}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        textLength={Math.max(r.textWidth, 1)}
                         lengthAdjust="spacingAndGlyphs"
-                        transform={
-                          vertical
-                            ? `translate(${r.x + r.width * 0.85} ${r.y + r.height}) rotate(-90)`
-                            : undefined
-                        }
+                        transform={`translate(${r.cx} ${r.cy}) rotate(${r.angleDeg})`}
                       >
                         {r.text}
                       </text>
                       <text
-                        x={r.x + r.width}
-                        y={Math.max(r.y - 2, labelSize)}
+                        x={r.labelX}
+                        y={Math.max(r.labelY - 2, labelSize)}
                         fill={confColor(r.confidence, ocrOptions.conf_threshold)}
                         fontSize={labelSize}
                         fontWeight={600}
