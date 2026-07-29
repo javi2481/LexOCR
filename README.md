@@ -1,6 +1,6 @@
 # IDP OCR Studio (MVP low-code)
 
-SPA académica para OCR con **PaddleOCR**: subir imágenes, inferir, ver bounding boxes y editar texto.
+SPA académica para OCR con **PP-OCRv6**: subir imágenes, inferir, ver bounding boxes/polígonos y editar texto.
 
 ## Requisitos
 
@@ -14,10 +14,10 @@ cd backend
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8100
 ```
 
-La primera ejecución descarga modelos de PaddleOCR (puede tardar).
+La primera ejecución descarga modelos de PaddleOCR (puede tardar). Cada combinación modo×tier se cachea al usarla por primera vez.
 
 ## Frontend
 
@@ -27,24 +27,38 @@ npm install
 npm run dev
 ```
 
-Abrir http://localhost:5173
+Abrir http://localhost:5173 (API por defecto: `http://localhost:8100`).
 
 ## Formatos soportados
 
-- Imágenes: PNG, JPG/JPEG/JFIF, WEBP, GIF, BMP, TIFF, ICO, PPM
-- Documentos: PDF (solo la primera página; se convierte a PNG)
+Solo imágenes: PNG, JPG/JPEG/JFIF, WEBP, GIF, BMP, TIFF, ICO, PPM/PNM, AVIF.
+
+PDF no está soportado.
+
+## Opciones OCR
+
+En el header:
+
+| Control | Valores | Efecto |
+|---------|---------|--------|
+| Modo | Rápido / Documento | Documento activa orientación de página; orientación de líneas siempre on |
+| Tier | tiny / small / medium | Velocidad vs precisión (PP-OCRv6) |
+| Conf | 50–95% | Umbral de “baja confianza” (métricas y filtro) |
+
+Las opciones se guardan en `localStorage`. Cambiarlas no reprocesa solo: hay que volver a **Run**.
 
 ## Uso
 
-1. Arrastrar imágenes o PDF a la galería
-2. Click **Run** o **Run All**
-3. Revisar BB en el visor y editar texto a la derecha
-4. Exportar JSON / CSV / TXT (usa el texto editado)
+1. Arrastrar imágenes a la galería, elegir archivos, o pegar desde el portapapeles (Ctrl+V)
+2. Elegir modo / tier / umbral
+3. Click **Run** o **Run All**
+4. Revisar polígonos en el visor y editar texto a la derecha
+5. Exportar JSON / CSV / TXT (usa el texto editado; JSON incluye `poly`)
 
 ## Stack
 
 - Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4
-- Backend: FastAPI + PaddleOCR (un solo `main.py`)
+- Backend: FastAPI + PaddleOCR PP-OCRv6 (un solo `main.py`)
 
 ## Continuidad Engram (otro PC)
 
@@ -64,4 +78,3 @@ engram sync --import
 ```
 
 No hace falta copiar `~/.engram/engram.db`; el export y los chunks bastan.
-

@@ -1,10 +1,26 @@
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
 
+export type OcrMode = "fast" | "document";
+export type OcrTier = "tiny" | "small" | "medium";
+
+export type InferOptions = {
+  mode: OcrMode;
+  tier: OcrTier;
+  conf_threshold: number;
+  /** Solo si se setean; ausentes → default interno de Paddle */
+  text_det_box_thresh?: number;
+  text_det_thresh?: number;
+  text_det_unclip_ratio?: number;
+  text_det_limit_side_len?: number;
+  text_det_limit_type?: string;
+};
+
 export type Region = {
   id: number;
   text: string;
   confidence: number;
   bbox: { x: number; y: number; width: number; height: number };
+  poly?: number[][];
 };
 
 export type OCRResult = {
@@ -18,6 +34,9 @@ export type OCRResult = {
   regions: Region[];
   width: number;
   height: number;
+  ocr_mode?: OcrMode;
+  ocr_tier?: OcrTier;
+  conf_threshold?: number;
 };
 
 export type UploadResponse = {
@@ -25,6 +44,12 @@ export type UploadResponse = {
   filename: string;
   preview_url?: string;
   source_format?: string;
+};
+
+export const DEFAULT_INFER_OPTIONS: InferOptions = {
+  mode: "fast",
+  tier: "medium",
+  conf_threshold: 0.9,
 };
 
 export const imageUrl = (imageId: string) => `${API}/image/${imageId}`;
@@ -37,17 +62,24 @@ export async function upload(file: File): Promise<UploadResponse> {
   return res.json();
 }
 
-export async function infer(imageId: string): Promise<OCRResult> {
-  const res = await fetch(`${API}/infer/${imageId}`, { method: "POST" });
+export async function infer(imageId: string, options: InferOptions = DEFAULT_INFER_OPTIONS): Promise<OCRResult> {
+  const res = await fetch(`${API}/infer/${imageId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function inferBatch(imageIds: string[]): Promise<OCRResult[]> {
+export async function inferBatch(
+  imageIds: string[],
+  options: InferOptions = DEFAULT_INFER_OPTIONS
+): Promise<OCRResult[]> {
   const res = await fetch(`${API}/infer/batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image_ids: imageIds }),
+    body: JSON.stringify({ image_ids: imageIds, ...options }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

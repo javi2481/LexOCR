@@ -7,7 +7,17 @@ import {
   type CSSProperties,
   type DragEvent,
 } from "react";
-import { upload, infer, imageUrl, type OCRResult, type Region } from "./api";
+import {
+  upload,
+  infer,
+  imageUrl,
+  DEFAULT_INFER_OPTIONS,
+  type InferOptions,
+  type OcrMode,
+  type OcrTier,
+  type OCRResult,
+  type Region,
+} from "./api";
 
 type Status = "pending" | "processing" | "completed" | "error";
 
@@ -37,10 +47,48 @@ const ACCEPTED_EXT = new Set([
   "ico",
   "ppm",
   "pnm",
-  "pdf",
 ]);
 
 const BROWSER_PREVIEW_EXT = new Set(["png", "jpg", "jpeg", "jfif", "bmp", "gif", "webp", "avif"]);
+
+const OCR_LS_KEY = "ocr_options";
+
+function loadOcrOptions(): InferOptions {
+  try {
+    const raw = localStorage.getItem(OCR_LS_KEY);
+    if (!raw) return { ...DEFAULT_INFER_OPTIONS };
+    const parsed = JSON.parse(raw) as Partial<InferOptions>;
+    const mode: OcrMode = parsed.mode === "document" ? "document" : "fast";
+    const tier: OcrTier =
+      parsed.tier === "tiny" || parsed.tier === "small" || parsed.tier === "medium"
+        ? parsed.tier
+        : "medium";
+    const thr =
+      typeof parsed.conf_threshold === "number"
+        ? Math.min(0.95, Math.max(0.5, parsed.conf_threshold))
+        : 0.9;
+    const opts: InferOptions = { mode, tier, conf_threshold: thr };
+    // Passthrough opcional: solo si el usuario ya los guardó; sin inventar defaults
+    if (typeof parsed.text_det_box_thresh === "number") {
+      opts.text_det_box_thresh = parsed.text_det_box_thresh;
+    }
+    if (typeof parsed.text_det_thresh === "number") {
+      opts.text_det_thresh = parsed.text_det_thresh;
+    }
+    if (typeof parsed.text_det_unclip_ratio === "number") {
+      opts.text_det_unclip_ratio = parsed.text_det_unclip_ratio;
+    }
+    if (typeof parsed.text_det_limit_side_len === "number") {
+      opts.text_det_limit_side_len = parsed.text_det_limit_side_len;
+    }
+    if (typeof parsed.text_det_limit_type === "string" && parsed.text_det_limit_type) {
+      opts.text_det_limit_type = parsed.text_det_limit_type;
+    }
+    return opts;
+  } catch {
+    return { ...DEFAULT_INFER_OPTIONS };
+  }
+}
 
 function fileExt(name: string) {
   const i = name.lastIndexOf(".");
@@ -51,14 +99,13 @@ function isAcceptedFile(f: File) {
   const ext = fileExt(f.name);
   if (ext && ACCEPTED_EXT.has(ext)) return true;
   if (f.type.startsWith("image/")) return true;
-  if (f.type === "application/pdf") return true;
   return false;
 }
 
 function needsServerPreview(f: File) {
   const ext = fileExt(f.name);
   if (ext && !BROWSER_PREVIEW_EXT.has(ext)) return true;
-  if (f.type === "application/pdf" || f.type === "image/tiff" || f.type === "image/x-icon") return true;
+  if (f.type === "image/tiff" || f.type === "image/x-icon") return true;
   return false;
 }
 
@@ -107,10 +154,14 @@ function downloadBlob(filename: string, content: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-function confColor(c: number) {
-  if (c >= 0.9) return "var(--success)";
-  if (c >= 0.7) return "var(--warning)";
+function confColor(c: number, threshold = 0.9) {
+  if (c >= threshold) return "var(--success)";
+  if (c >= threshold * 0.78) return "var(--warning)";
   return "var(--error)";
+}
+
+function polyPointsAttr(poly: number[][], scaleX: number, scaleY: number): string {
+  return poly.map((p) => `${p[0] * scaleX},${p[1] * scaleY}`).join(" ");
 }
 
 type LayoutBox = {
@@ -260,6 +311,7 @@ export default function App() {
   });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "low" | "numbers">("all");
+  const [ocrOptions, setOcrOptions] = useState<InferOptions>(() => loadOcrOptions());
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [lastMs, setLastMs] = useState<number | null>(null);
@@ -277,6 +329,10 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem(OCR_LS_KEY, JSON.stringify(ocrOptions));
+  }, [ocrOptions]);
 
   useEffect(() => {
     const el = imgWrapRef.current;
@@ -336,6 +392,28 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of items) {
+        if (!item.type.startsWith("image/")) continue;
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const ext = blob.type.split("/")[1] || "png";
+        const name = `paste-${Date.now()}.${ext === "jpeg" ? "jpg" : ext}`;
+        files.push(new File([blob], name, { type: blob.type }));
+      }
+      if (files.length) {
+        e.preventDefault();
+        addFiles(files);
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [addFiles]);
+
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragOver(false);
@@ -362,7 +440,7 @@ export default function App() {
           revokePreview: false,
         });
       }
-      const result = await infer(imageId);
+      const result = await infer(imageId, ocrOptions);
       updateImage(item.localId, { status: "completed", result, id: imageId });
       setLastMs(result.inference_time_ms);
       return result;
@@ -438,13 +516,14 @@ export default function App() {
 
   const filteredRegions: Region[] = useMemo(() => {
     const regions = selected?.result?.regions ?? [];
+    const thr = ocrOptions.conf_threshold;
     return regions.filter((r) => {
-      if (filter === "low" && r.confidence >= 0.9) return false;
+      if (filter === "low" && r.confidence >= thr) return false;
       if (filter === "numbers" && !/^\d/.test(r.text.trim())) return false;
       if (search && !r.text.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [selected?.result?.regions, filter, search]);
+  }, [selected?.result?.regions, filter, search, ocrOptions.conf_threshold]);
 
   const orderedRegions: Region[] = useMemo(() => {
     const regions = selected?.result?.regions ?? [];
@@ -557,10 +636,83 @@ export default function App() {
           <span className="text-sm font-semibold tracking-wide">IDP OCR Studio</span>
           <span
             className="rounded px-2 py-0.5 text-[10px] font-medium uppercase"
-            style={{ background: "var(--surface-raised)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            style={{
+              background: "var(--surface-raised)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            title="Motor y opciones activas"
           >
-            PaddleOCR
+            PP-OCRv6 · {selected?.result?.ocr_tier ?? ocrOptions.tier} ·{" "}
+            {selected?.result?.ocr_mode ?? ocrOptions.mode}
           </span>
+          <div className="ml-1 flex flex-wrap items-center gap-2" role="group" aria-label="Opciones OCR">
+            <div className="flex rounded border" style={{ borderColor: "var(--border)" }}>
+              {(
+                [
+                  ["fast", "Rápido"],
+                  ["document", "Documento"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={busy}
+                  aria-pressed={ocrOptions.mode === value}
+                  aria-label={`Modo ${label}`}
+                  onClick={() => setOcrOptions((o) => ({ ...o, mode: value }))}
+                  className="px-2 py-1 text-[10px] font-medium disabled:opacity-50"
+                  style={{
+                    background:
+                      ocrOptions.mode === value ? "var(--accent)" : "var(--surface-raised)",
+                    color: ocrOptions.mode === value ? "#fff" : "var(--text-secondary)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-secondary)" }}>
+              <span>Tier</span>
+              <select
+                aria-label="Tier del modelo"
+                disabled={busy}
+                value={ocrOptions.tier}
+                onChange={(e) =>
+                  setOcrOptions((o) => ({ ...o, tier: e.target.value as OcrTier }))
+                }
+                className="rounded border px-1 py-0.5 text-[10px] disabled:opacity-50"
+                style={{
+                  background: "var(--surface-raised)",
+                  borderColor: "var(--border)",
+                  color: "var(--text)",
+                }}
+              >
+                <option value="tiny">tiny</option>
+                <option value="small">small</option>
+                <option value="medium">medium</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-secondary)" }}>
+              <span>Conf {(ocrOptions.conf_threshold * 100).toFixed(0)}%</span>
+              <input
+                type="range"
+                min={0.5}
+                max={0.95}
+                step={0.05}
+                aria-label="Umbral de baja confianza"
+                disabled={busy}
+                value={ocrOptions.conf_threshold}
+                onChange={(e) =>
+                  setOcrOptions((o) => ({
+                    ...o,
+                    conf_threshold: Number(e.target.value),
+                  }))
+                }
+                className="w-20 disabled:opacity-50"
+              />
+            </label>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
@@ -611,12 +763,12 @@ export default function App() {
             onDrop={onDrop}
             onClick={() => fileInputRef.current?.click()}
           >
-            Arrastrá imágenes o PDF
-            <div className="mt-1 text-[10px] opacity-70">PNG JPG WEBP AVIF TIFF GIF BMP ICO PPM PDF</div>
+            Arrastrá imágenes o pegá (Ctrl+V)
+            <div className="mt-1 text-[10px] opacity-70">PNG JPG WEBP AVIF TIFF GIF BMP ICO PPM</div>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,.pdf,image/*,application/pdf"
+              accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,image/*"
               multiple
               className="hidden"
               onChange={(e) => e.target.files && addFiles(e.target.files)}
@@ -718,7 +870,10 @@ export default function App() {
                       className="min-w-0 flex-1 bg-transparent text-xs outline-none"
                       style={{ color: "var(--text)" }}
                     />
-                    <span className="shrink-0 text-[10px]" style={{ color: confColor(r.confidence) }}>
+                    <span
+                      className="shrink-0 text-[10px]"
+                      style={{ color: confColor(r.confidence, ocrOptions.conf_threshold) }}
+                    >
                       {(r.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
@@ -792,6 +947,7 @@ export default function App() {
                     {selected.result.regions.map((r, i) => {
                       const color = PALETTE[i % PALETTE.length];
                       const active = hoveredRegion === r.id;
+                      const hasPoly = Array.isArray(r.poly) && r.poly.length >= 3;
                       return (
                         <g
                           key={r.id}
@@ -800,17 +956,27 @@ export default function App() {
                           onClick={() => scrollToRegion(r.id)}
                           style={{ cursor: "pointer" }}
                         >
-                          <rect
-                            x={r.bbox.x * scaleX}
-                            y={r.bbox.y * scaleY}
-                            width={r.bbox.width * scaleX}
-                            height={r.bbox.height * scaleY}
-                            stroke={color}
-                            strokeWidth={active ? 3 : 2}
-                            fill={color}
-                            fillOpacity={active ? 0.18 : 0.06}
-                            rx={3}
-                          />
+                          {hasPoly ? (
+                            <polygon
+                              points={polyPointsAttr(r.poly!, scaleX, scaleY)}
+                              stroke={color}
+                              strokeWidth={active ? 3 : 2}
+                              fill={color}
+                              fillOpacity={active ? 0.18 : 0.06}
+                            />
+                          ) : (
+                            <rect
+                              x={r.bbox.x * scaleX}
+                              y={r.bbox.y * scaleY}
+                              width={r.bbox.width * scaleX}
+                              height={r.bbox.height * scaleY}
+                              stroke={color}
+                              strokeWidth={active ? 3 : 2}
+                              fill={color}
+                              fillOpacity={active ? 0.18 : 0.06}
+                              rx={3}
+                            />
+                          )}
                           <text
                             x={r.bbox.x * scaleX}
                             y={r.bbox.y * scaleY - 4}
@@ -963,7 +1129,7 @@ export default function App() {
                       <text
                         x={r.x + r.width}
                         y={Math.max(r.y - 2, labelSize)}
-                        fill={confColor(r.confidence)}
+                        fill={confColor(r.confidence, ocrOptions.conf_threshold)}
                         fontSize={labelSize}
                         fontWeight={600}
                         textAnchor="end"

@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 # Cache de PaddleX dentro del proyecto (evita escribir en ~/.paddlex)
 _ROOT = Path(__file__).resolve().parent
@@ -15,7 +15,7 @@ _PADDLEX.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(_PADDLEX))
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -39,7 +39,6 @@ ALLOWED_MIME = {
     "image/vnd.microsoft.icon",
     "image/x-portable-pixmap",
     "image/x-portable-anymap",
-    "application/pdf",
     "application/octet-stream",  # algunos browsers mandan esto; se valida por magic/ext
 }
 
@@ -57,8 +56,11 @@ ALLOWED_EXT = {
     "ico",
     "ppm",
     "pnm",
-    "pdf",
 }
+
+IMAGE_KINDS = frozenset(
+    {"png", "jpeg", "gif", "bmp", "webp", "avif", "tiff", "ico", "ppm"}
+)
 
 MAGIC_PREFIXES = (
     (b"\x89PNG\r\n\x1a\n", "png"),
@@ -66,10 +68,12 @@ MAGIC_PREFIXES = (
     (b"GIF87a", "gif"),
     (b"GIF89a", "gif"),
     (b"BM", "bmp"),
-    (b"%PDF", "pdf"),
     (b"II*\x00", "tiff"),
     (b"MM\x00*", "tiff"),
 )
+
+OcrMode = Literal["fast", "document"]
+OcrTier = Literal["tiny", "small", "medium"]
 
 app = FastAPI(title="IDP OCR Studio")
 app.add_middleware(
@@ -82,33 +86,86 @@ app.add_middleware(
 # image_id -> metadata
 store: dict[str, dict[str, Any]] = {}
 
-ocr_engine = None
+# (mode, tier) -> PaddleOCR instance
+_ocr_cache: dict[tuple[str, str], Any] = {}
 
 
-def get_ocr():
-    """Lazy-init PaddleOCR PP-OCRv6 (unified multilingual, no lang)."""
-    global ocr_engine
-    if ocr_engine is not None:
-        return ocr_engine
+class InferOptions(BaseModel):
+    mode: OcrMode = "fast"
+    tier: OcrTier = "medium"
+    conf_threshold: float = Field(default=0.9, ge=0.5, le=0.99)
+    # Overrides opcionales: None = default interno de Paddle (no hardcodear aquí)
+    text_det_box_thresh: float | None = None
+    text_det_thresh: float | None = None
+    text_det_unclip_ratio: float | None = None
+    text_det_limit_side_len: int | None = None
+    text_det_limit_type: str | None = None
+
+
+def _det_predict_kwargs(options: InferOptions) -> dict[str, Any]:
+    """Solo claves con valor; omitidas → Paddle usa su default."""
+    mapping = {
+        "text_det_box_thresh": options.text_det_box_thresh,
+        "text_det_thresh": options.text_det_thresh,
+        "text_det_unclip_ratio": options.text_det_unclip_ratio,
+        "text_det_limit_side_len": options.text_det_limit_side_len,
+        "text_det_limit_type": options.text_det_limit_type,
+    }
+    return {k: v for k, v in mapping.items() if v is not None}
+
+
+def get_ocr(mode: OcrMode = "fast", tier: OcrTier = "medium"):
+    """Lazy-init PaddleOCR PP-OCRv6 keyed by mode + tier."""
+    key = (mode, tier)
+    if key in _ocr_cache:
+        return _ocr_cache[key]
+
     from paddleocr import PaddleOCR
 
-    kwargs = {
+    document = mode == "document"
+    kwargs: dict[str, Any] = {
         "ocr_version": "PP-OCRv6",
-        "use_doc_orientation_classify": False,
+        "use_doc_orientation_classify": document,
         "use_doc_unwarping": False,
-        "use_textline_orientation": False,
+        "use_textline_orientation": True,
+        "text_detection_model_name": f"PP-OCRv6_{tier}_det",
+        "text_recognition_model_name": f"PP-OCRv6_{tier}_rec",
+        # oneDNN/mkldnn rompe predict en algunos builds Windows (PIR Unimplemented)
         "enable_mkldnn": False,
     }
-    try:
-        ocr_engine = PaddleOCR(**kwargs)
-    except TypeError:
-        kwargs.pop("enable_mkldnn", None)
+
+    engine = None
+    # Progressive fallback if installed API rejects some kwargs
+    drop_order = (
+        "enable_mkldnn",
+        "text_detection_model_name",
+        "text_recognition_model_name",
+        "ocr_version",
+    )
+    attempt = dict(kwargs)
+    while True:
         try:
-            ocr_engine = PaddleOCR(**kwargs)
+            engine = PaddleOCR(**attempt)
+            break
         except TypeError:
-            kwargs.pop("ocr_version", None)
-            ocr_engine = PaddleOCR(**kwargs) if kwargs else PaddleOCR()
-    return ocr_engine
+            dropped = False
+            for name in drop_order:
+                if name in attempt:
+                    attempt.pop(name)
+                    dropped = True
+                    break
+            if not dropped:
+                engine = PaddleOCR()
+                break
+        except Exception:
+            if "text_detection_model_name" in attempt:
+                attempt.pop("text_detection_model_name", None)
+                attempt.pop("text_recognition_model_name", None)
+                continue
+            raise
+
+    _ocr_cache[key] = engine
+    return engine
 
 
 class Region(BaseModel):
@@ -116,6 +173,7 @@ class Region(BaseModel):
     text: str
     confidence: float
     bbox: dict[str, float]
+    poly: list[list[float]] = Field(default_factory=list)
 
 
 class OCRResult(BaseModel):
@@ -129,9 +187,12 @@ class OCRResult(BaseModel):
     regions: list[Region]
     width: int
     height: int
+    ocr_mode: OcrMode = "fast"
+    ocr_tier: OcrTier = "medium"
+    conf_threshold: float = 0.9
 
 
-class BatchRequest(BaseModel):
+class BatchRequest(InferOptions):
     image_ids: list[str] = Field(default_factory=list)
 
 
@@ -146,7 +207,6 @@ def _page_to_dict(page: Any) -> dict[str, Any]:
             return data["res"]
         if isinstance(data, dict):
             return data
-    # OCRResult dict-like
     out: dict[str, Any] = {}
     for key in ("rec_texts", "rec_scores", "rec_polys", "dt_polys", "rec_boxes"):
         if hasattr(page, "get"):
@@ -158,14 +218,40 @@ def _page_to_dict(page: Any) -> dict[str, Any]:
     return out
 
 
-def _run_paddle(path: str) -> list[tuple[list, tuple[str, float]]]:
+def _normalize_poly(poly: Any) -> list[list[float]]:
+    if poly is None:
+        return []
+    if hasattr(poly, "tolist"):
+        poly = poly.tolist()
+    points: list[list[float]] = []
+    if isinstance(poly, (list, tuple)) and poly and not isinstance(poly[0], (list, tuple)):
+        flat = list(poly)
+        for i in range(0, len(flat) - 1, 2):
+            points.append([round(float(flat[i]), 2), round(float(flat[i + 1]), 2)])
+        return points
+    for p in poly:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            points.append([round(float(p[0]), 2), round(float(p[1]), 2)])
+    return points
+
+
+def _run_paddle(
+    path: str,
+    mode: OcrMode = "fast",
+    tier: OcrTier = "medium",
+    options: InferOptions | None = None,
+) -> list[tuple[list, tuple[str, float]]]:
     """Normalize PaddleOCR output to [(polygon, (text, conf)), ...]."""
-    engine = get_ocr()
+    engine = get_ocr(mode, tier)
     lines: list[tuple[list, tuple[str, float]]] = []
+    det_kwargs = _det_predict_kwargs(options) if options is not None else {}
 
     raw = None
     if hasattr(engine, "predict"):
-        raw = engine.predict(path)
+        try:
+            raw = engine.predict(path, **det_kwargs) if det_kwargs else engine.predict(path)
+        except TypeError:
+            raw = engine.predict(path)
     else:
         try:
             raw = engine.ocr(path, cls=True)
@@ -181,7 +267,6 @@ def _run_paddle(path: str) -> list[tuple[list, tuple[str, float]]]:
             continue
         data = _page_to_dict(page)
 
-        # PaddleOCR / PaddleX predict format
         if "rec_texts" in data or "rec_scores" in data:
             texts = list(data.get("rec_texts") or [])
             scores = list(data.get("rec_scores") or [])
@@ -197,14 +282,12 @@ def _run_paddle(path: str) -> list[tuple[list, tuple[str, float]]]:
                     b = boxes[i]
                     if hasattr(b, "tolist"):
                         b = b.tolist()
-                    # [x1,y1,x2,y2] -> polygon
                     box = [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]]
                 else:
                     box = [[0, 0], [0, 0], [0, 0], [0, 0]]
                 lines.append((box, (str(text), conf)))
             continue
 
-        # Classic list-of-[bbox, (text, conf)]
         if isinstance(page, (list, tuple)):
             for line in page:
                 if not line or not isinstance(line, (list, tuple)) or len(line) < 2:
@@ -218,7 +301,6 @@ def _run_paddle(path: str) -> list[tuple[list, tuple[str, float]]]:
 def _polygon_to_bbox(poly: list) -> dict[str, float]:
     xs: list[float] = []
     ys: list[float] = []
-    # numpy array Nx2
     if hasattr(poly, "tolist"):
         poly = poly.tolist()
     for p in poly:
@@ -244,6 +326,9 @@ def _polygon_to_bbox(poly: list) -> dict[str, float]:
 
 def _detect_format(data: bytes, filename: str, content_type: str) -> str:
     """Detecta formato por magic bytes, extensión o MIME."""
+    if data.startswith(b"%PDF"):
+        raise HTTPException(400, "Solo imágenes; PDF no soportado")
+
     for prefix, kind in MAGIC_PREFIXES:
         if data.startswith(prefix):
             return kind
@@ -255,6 +340,8 @@ def _detect_format(data: bytes, filename: str, content_type: str) -> str:
         return "ppm"
 
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "pdf":
+        raise HTTPException(400, "Solo imágenes; PDF no soportado")
     if ext in ALLOWED_EXT:
         if ext in ("jpg", "jpeg", "jfif"):
             return "jpeg"
@@ -267,6 +354,8 @@ def _detect_format(data: bytes, filename: str, content_type: str) -> str:
         return ext
 
     mime = content_type.split(";")[0].strip().lower()
+    if mime == "application/pdf":
+        raise HTTPException(400, "Solo imágenes; PDF no soportado")
     mime_map = {
         "image/png": "png",
         "image/jpeg": "jpeg",
@@ -281,42 +370,25 @@ def _detect_format(data: bytes, filename: str, content_type: str) -> str:
         "image/x-icon": "ico",
         "image/vnd.microsoft.icon": "ico",
         "image/x-portable-pixmap": "ppm",
-        "application/pdf": "pdf",
     }
     if mime in mime_map:
         return mime_map[mime]
     raise HTTPException(400, "Formato no soportado")
 
 
-def _pdf_first_page_to_pil(data: bytes) -> Image.Image:
-    try:
-        import pypdfium2 as pdfium
-    except ImportError as exc:
-        raise HTTPException(500, "Falta pypdfium2 para PDF") from exc
-    pdf = pdfium.PdfDocument(data)
-    if len(pdf) < 1:
-        raise HTTPException(400, "PDF vacío")
-    page = pdf[0]
-    bitmap = page.render(scale=2)
-    return bitmap.to_pil()
-
-
 def _normalize_to_png(data: bytes, kind: str, image_id: str) -> Path:
-    """Convierte cualquier formato aceptado a PNG RGB para OCR y preview."""
+    """Convierte cualquier formato de imagen aceptado a PNG RGB para OCR y preview."""
     out = UPLOAD_DIR / f"{image_id}.png"
     try:
-        if kind == "pdf":
-            img = _pdf_first_page_to_pil(data)
-        else:
-            from io import BytesIO
+        from io import BytesIO
 
-            if kind == "avif":
-                try:
-                    import pillow_avif  # noqa: F401
-                except ImportError:
-                    pass
-            img = Image.open(BytesIO(data))
-            img.load()
+        if kind == "avif":
+            try:
+                import pillow_avif  # noqa: F401
+            except ImportError:
+                pass
+        img = Image.open(BytesIO(data))
+        img.load()
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
         elif img.mode == "L":
@@ -327,6 +399,47 @@ def _normalize_to_png(data: bytes, kind: str, image_id: str) -> Path:
     except Exception as exc:
         raise HTTPException(400, f"No se pudo leer el archivo: {exc}") from exc
     return out
+
+
+def _build_result(
+    image_id: str,
+    item: dict[str, Any],
+    lines: list[tuple[list, tuple[str, float]]],
+    elapsed: float,
+    width: int,
+    height: int,
+    options: InferOptions,
+) -> OCRResult:
+    regions: list[Region] = []
+    for i, (bbox_raw, (text, conf)) in enumerate(lines):
+        poly = _normalize_poly(bbox_raw)
+        regions.append(
+            Region(
+                id=i,
+                text=text,
+                confidence=round(float(conf), 3),
+                bbox=_polygon_to_bbox(bbox_raw),
+                poly=poly,
+            )
+        )
+
+    confs = [r.confidence for r in regions]
+    thr = options.conf_threshold
+    return OCRResult(
+        image_id=image_id,
+        filename=item["filename"],
+        status="completed",
+        inference_time_ms=elapsed,
+        confidence_avg=round(sum(confs) / len(confs), 3) if confs else 0.0,
+        regions_count=len(regions),
+        low_confidence_count=len([c for c in confs if c < thr]),
+        regions=regions,
+        width=width,
+        height=height,
+        ocr_mode=options.mode,
+        ocr_tier=options.tier,
+        conf_threshold=thr,
+    )
 
 
 @app.get("/health")
@@ -351,21 +464,10 @@ async def upload(file: UploadFile = File(...)):
     if len(data) > 20 * 1024 * 1024:
         raise HTTPException(400, "Archivo supera 20MB")
 
-    filename = file.filename or "document"
+    filename = file.filename or "image"
     kind = _detect_format(data, filename, content_type)
-    if kind not in {
-        "png",
-        "jpeg",
-        "gif",
-        "bmp",
-        "webp",
-        "avif",
-        "tiff",
-        "ico",
-        "ppm",
-        "pdf",
-    }:
-        raise HTTPException(400, "Formato no soportado")
+    if kind not in IMAGE_KINDS:
+        raise HTTPException(400, "Solo imágenes; PDF no soportado")
 
     image_id = str(uuid.uuid4())
     path = _normalize_to_png(data, kind, image_id)
@@ -386,7 +488,7 @@ async def upload(file: UploadFile = File(...)):
 
 
 @app.post("/infer/{image_id}", response_model=OCRResult)
-def infer(image_id: str):
+def infer(image_id: str, options: InferOptions = Body(default_factory=InferOptions)):
     if image_id not in store:
         raise HTTPException(404, "Imagen no encontrada")
 
@@ -395,36 +497,13 @@ def infer(image_id: str):
 
     try:
         start = time.time()
-        lines = _run_paddle(item["path"])
+        lines = _run_paddle(item["path"], options.mode, options.tier, options)
         elapsed = round((time.time() - start) * 1000, 1)
 
         with Image.open(item["path"]) as img:
             w, h = img.size
 
-        regions: list[Region] = []
-        for i, (bbox_raw, (text, conf)) in enumerate(lines):
-            regions.append(
-                Region(
-                    id=i,
-                    text=text,
-                    confidence=round(float(conf), 3),
-                    bbox=_polygon_to_bbox(bbox_raw),
-                )
-            )
-
-        confs = [r.confidence for r in regions]
-        result = OCRResult(
-            image_id=image_id,
-            filename=item["filename"],
-            status="completed",
-            inference_time_ms=elapsed,
-            confidence_avg=round(sum(confs) / len(confs), 3) if confs else 0.0,
-            regions_count=len(regions),
-            low_confidence_count=len([c for c in confs if c < 0.9]),
-            regions=regions,
-            width=w,
-            height=h,
-        )
+        result = _build_result(image_id, item, lines, elapsed, w, h, options)
         item["status"] = "completed"
         item["result"] = result.model_dump()
         return result
@@ -436,10 +515,20 @@ def infer(image_id: str):
 
 @app.post("/infer/batch", response_model=list[OCRResult])
 def infer_batch(body: BatchRequest):
+    options = InferOptions(
+        mode=body.mode,
+        tier=body.tier,
+        conf_threshold=body.conf_threshold,
+        text_det_box_thresh=body.text_det_box_thresh,
+        text_det_thresh=body.text_det_thresh,
+        text_det_unclip_ratio=body.text_det_unclip_ratio,
+        text_det_limit_side_len=body.text_det_limit_side_len,
+        text_det_limit_type=body.text_det_limit_type,
+    )
     results: list[OCRResult] = []
     for iid in body.image_ids:
         if iid in store and store[iid]["status"] in ("pending", "error", "completed"):
-            results.append(infer(iid))
+            results.append(infer(iid, options))
     return results
 
 
