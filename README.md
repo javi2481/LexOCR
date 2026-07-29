@@ -45,3 +45,23 @@ Abrir http://localhost:5173
 
 - Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4
 - Backend: FastAPI + PaddleOCR (un solo `main.py`)
+
+## Continuidad Engram (otro PC)
+
+Memorias del proyecto versionadas para continuidad entre máquinas.
+
+1. Tener el CLI `engram` instalado en el PATH.
+2. En la raíz del repo, importar el export JSON:
+
+```bash
+engram import engram-export.json
+```
+
+3. (Opcional) Si hay chunks en `.engram/`, sincronizarlos a la DB local:
+
+```bash
+engram sync --import
+```
+
+No hace falta copiar `~/.engram/engram.db`; el export y los chunks bastan.
+

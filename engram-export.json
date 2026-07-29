@@ -1,0 +1,45 @@
+{
+  "version": "0.1.0",
+  "exported_at": "2026-07-29T20:11:04Z",
+  "sessions": [
+    {
+      "id": "manual-save-document-intelligence",
+      "project": "document-intelligence",
+      "directory": "/home/javier/document-intelligence",
+      "started_at": "2026-07-29 19:58:47"
+    }
+  ],
+  "observations": [
+    {
+      "id": 77,
+      "sync_id": "obs-f8db84463234548e",
+      "session_id": "manual-save-document-intelligence",
+      "type": "manual",
+      "title": "IDP OCR Studio — overview",
+      "content": "Academic low-code MVP: React 19 + Vite + Tailwind v4 frontend; FastAPI + PaddleOCR single-file backend.\nRepo: https://github.com/javi2481/document-intelligence.git\nPhilosophy: max ~10 app files, no Zustand/Konva/shadcn/Celery/multi-OCR engines.\nStructure: frontend/ (App.tsx, api.ts, index.css) + backend/main.py + requirements.txt + README.md\nFormats: PNG JPG WEBP GIF BMP TIFF ICO PPM + PDF first page (normalized to PNG).\nRun: backend `python -m uvicorn main:app --reload --port 8000`; frontend `npm run dev` → http://localhost:5173\nPaddleOCR init needs enable_mkldnn=False; uses predict() API; PADDLE_PDX_CACHE_HOME in backend/.paddlex\nExport is client-side (JSON/CSV/TXT) so edits are included.\nTheme dark-first with localStorage.",
+      "project": "document-intelligence",
+      "scope": "project",
+      "revision_count": 1,
+      "duplicate_count": 1,
+      "last_seen_at": "2026-07-29 19:58:47",
+      "created_at": "2026-07-29 19:58:47",
+      "updated_at": "2026-07-29 19:58:47"
+    },
+    {
+      "id": 78,
+      "sync_id": "obs-1727c3788c187dc6",
+      "session_id": "manual-save-document-intelligence",
+      "type": "manual",
+      "title": "IDP OCR Studio — continue on another PC",
+      "content": "git clone https://github.com/javi2481/document-intelligence.git\ncd document-intelligence/backend && python3.11 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt\npython -m uvicorn main:app --reload --port 8000\n# other terminal:\ncd frontend && npm install && npm run dev\n\nFirst PaddleOCR run downloads models (slow).",
+      "project": "document-intelligence",
+      "scope": "project",
+      "revision_count": 1,
+      "duplicate_count": 1,
+      "last_seen_at": "2026-07-29 19:58:47",
+      "created_at": "2026-07-29 19:58:47",
+      "updated_at": "2026-07-29 19:58:47"
+    }
+  ],
+  "prompts": []
+}
