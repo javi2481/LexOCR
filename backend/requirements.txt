@@ -1,8 +1,9 @@
 fastapi
 uvicorn
 python-multipart
-paddleocr
+paddleocr>=3.7.0
 paddlepaddle
 pillow
+pillow-avif-plugin
 pydantic
 pypdfium2

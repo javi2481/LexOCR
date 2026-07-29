@@ -31,6 +31,7 @@ const ACCEPTED_EXT = new Set([
   "bmp",
   "gif",
   "webp",
+  "avif",
   "tif",
   "tiff",
   "ico",
@@ -39,7 +40,7 @@ const ACCEPTED_EXT = new Set([
   "pdf",
 ]);
 
-const BROWSER_PREVIEW_EXT = new Set(["png", "jpg", "jpeg", "jfif", "bmp", "gif", "webp"]);
+const BROWSER_PREVIEW_EXT = new Set(["png", "jpg", "jpeg", "jfif", "bmp", "gif", "webp", "avif"]);
 
 function fileExt(name: string) {
   const i = name.lastIndexOf(".");
@@ -112,6 +113,141 @@ function confColor(c: number) {
   return "var(--error)";
 }
 
+type LayoutBox = {
+  id: number;
+  text: string;
+  confidence: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type InflatedLayout = {
+  regions: LayoutBox[];
+  canvasW: number;
+  canvasH: number;
+  inflated: boolean;
+};
+
+function boxesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+  pad = 0
+) {
+  return !(
+    a.x + a.width + pad <= b.x ||
+    b.x + b.width + pad <= a.x ||
+    a.y + a.height + pad <= b.y ||
+    b.y + b.height + pad <= a.y
+  );
+}
+
+function crowdedIdsFromOverlaps(boxes: LayoutBox[], pad = 6): Set<number> {
+  const crowded = new Set<number>();
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (!boxesOverlap(boxes[i], boxes[j], pad)) continue;
+      crowded.add(boxes[i].id);
+      crowded.add(boxes[j].id);
+    }
+  }
+  return crowded;
+}
+
+function inflateIfCrowded(regions: Region[], imgW: number, imgH: number): InflatedLayout {
+  const base: LayoutBox[] = regions.map((r) => ({
+    id: r.id,
+    text: r.text,
+    confidence: r.confidence,
+    x: r.bbox.x,
+    y: r.bbox.y,
+    width: Math.max(r.bbox.width, 1),
+    height: Math.max(r.bbox.height, 1),
+  }));
+
+  if (!base.length) {
+    return { regions: [], canvasW: imgW, canvasH: imgH, inflated: false };
+  }
+
+  const pad = 6;
+  const crowdedIds = crowdedIdsFromOverlaps(base, pad);
+  if (!crowdedIds.size) {
+    return { regions: base, canvasW: imgW, canvasH: imgH, inflated: false };
+  }
+
+  const boxes = base.map((b) => ({ ...b }));
+  const crowded = boxes.filter((b) => crowdedIds.has(b.id));
+  const cx = crowded.reduce((s, b) => s + b.x + b.width / 2, 0) / crowded.length;
+  const cy = crowded.reduce((s, b) => s + b.y + b.height / 2, 0) / crowded.length;
+  const expand = 1.4;
+
+  for (const b of crowded) {
+    const mx = b.x + b.width / 2;
+    const my = b.y + b.height / 2;
+    const nx = cx + (mx - cx) * expand;
+    const ny = cy + (my - cy) * expand;
+    b.x = nx - b.width / 2;
+    b.y = ny - b.height / 2;
+  }
+
+  const iterations = 30;
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        if (!boxesOverlap(a, b, pad)) continue;
+        if (!crowdedIds.has(a.id) && !crowdedIds.has(b.id)) continue;
+        const ax = a.x + a.width / 2;
+        const ay = a.y + a.height / 2;
+        const bx = b.x + b.width / 2;
+        const by = b.y + b.height / 2;
+        let dx = bx - ax;
+        let dy = by - ay;
+        const dist = Math.hypot(dx, dy) || 1;
+        dx /= dist;
+        dy /= dist;
+        const push = 2.5;
+        if (crowdedIds.has(a.id)) {
+          a.x -= dx * push;
+          a.y -= dy * push;
+        }
+        if (crowdedIds.has(b.id)) {
+          b.x += dx * push;
+          b.y += dy * push;
+        }
+      }
+    }
+  }
+
+  let minX = 0;
+  let minY = 0;
+  let maxX = imgW;
+  let maxY = imgH;
+  for (const b of boxes) {
+    minX = Math.min(minX, b.x);
+    minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.width);
+    maxY = Math.max(maxY, b.y + b.height);
+  }
+  const margin = 12;
+  const offsetX = minX < 0 ? -minX + margin : 0;
+  const offsetY = minY < 0 ? -minY + margin : 0;
+  if (offsetX || offsetY) {
+    for (const b of boxes) {
+      b.x += offsetX;
+      b.y += offsetY;
+    }
+    maxX += offsetX;
+    maxY += offsetY;
+  }
+  const canvasW = Math.max(imgW, maxX + margin);
+  const canvasH = Math.max(imgH, maxY + margin);
+
+  return { regions: boxes, canvasW, canvasH, inflated: true };
+}
+
 export default function App() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -128,6 +264,7 @@ export default function App() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [lastMs, setLastMs] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regionRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const imgWrapRef = useRef<HTMLDivElement>(null);
@@ -309,6 +446,65 @@ export default function App() {
     });
   }, [selected?.result?.regions, filter, search]);
 
+  const orderedRegions: Region[] = useMemo(() => {
+    const regions = selected?.result?.regions ?? [];
+    if (!regions.length) return [];
+
+    const ordered = [...regions].sort((a, b) => {
+      const lineTolerance = Math.max(a.bbox.height, b.bbox.height) * 0.6;
+      if (Math.abs(a.bbox.y - b.bbox.y) <= lineTolerance) {
+        return a.bbox.x - b.bbox.x;
+      }
+      return a.bbox.y - b.bbox.y;
+    });
+
+    const lines: Region[][] = [];
+    for (const region of ordered) {
+      const current = lines.at(-1);
+      if (!current) {
+        lines.push([region]);
+        continue;
+      }
+      const avgY = current.reduce((sum, item) => sum + item.bbox.y, 0) / current.length;
+      const avgHeight =
+        current.reduce((sum, item) => sum + item.bbox.height, 0) / current.length;
+      if (Math.abs(region.bbox.y - avgY) <= Math.max(avgHeight, region.bbox.height) * 0.6) {
+        current.push(region);
+      } else {
+        lines.push([region]);
+      }
+    }
+
+    return lines.flatMap((line) => line.sort((a, b) => a.bbox.x - b.bbox.x));
+  }, [selected?.result?.regions]);
+
+  const resultLayout = useMemo(() => {
+    if (!selected?.result) {
+      return { regions: [] as LayoutBox[], canvasW: 1, canvasH: 1, inflated: false };
+    }
+    return inflateIfCrowded(
+      selected.result.regions,
+      selected.result.width,
+      selected.result.height
+    );
+  }, [selected?.result]);
+
+  const cleanText = useMemo(
+    () =>
+      orderedRegions
+        .map((r) => r.text.trim())
+        .filter(Boolean)
+        .join("\n"),
+    [orderedRegions]
+  );
+
+  const copyCleanText = async () => {
+    if (!cleanText) return;
+    await navigator.clipboard.writeText(cleanText);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
   const exportResult = (format: "json" | "csv" | "txt") => {
     if (!selected?.result) return;
     const res = selected.result;
@@ -394,7 +590,7 @@ export default function App() {
       </header>
 
       {/* Main grid */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[240px_1fr_320px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_minmax(380px,1fr)]">
         {/* Gallery */}
         <aside
           className="flex min-h-0 flex-col border-r"
@@ -416,18 +612,18 @@ export default function App() {
             onClick={() => fileInputRef.current?.click()}
           >
             Arrastrá imágenes o PDF
-            <div className="mt-1 text-[10px] opacity-70">PNG JPG WEBP TIFF GIF BMP ICO PPM PDF</div>
+            <div className="mt-1 text-[10px] opacity-70">PNG JPG WEBP AVIF TIFF GIF BMP ICO PPM PDF</div>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.tif,.tiff,.ico,.ppm,.pnm,.pdf,image/*,application/pdf"
+              accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,.pdf,image/*,application/pdf"
               multiple
               className="hidden"
               onChange={(e) => e.target.files && addFiles(e.target.files)}
             />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+          <div className="shrink-0 px-3 pb-3">
             <div className="grid grid-cols-2 gap-2">
               {images.map((img) => (
                 <button
@@ -451,6 +647,83 @@ export default function App() {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col border-t" style={{ borderColor: "var(--border)" }}>
+            <div className="space-y-2 p-3">
+              <div className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
+                Palabras detectadas
+              </div>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar palabra…"
+                className="w-full rounded-md px-2 py-1.5 text-xs outline-none"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
+              />
+              <div className="flex gap-1">
+                {([
+                  ["all", "Todas"],
+                  ["low", "Baja conf."],
+                  ["numbers", "Números"],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFilter(key)}
+                    className="rounded px-2 py-1 text-[10px]"
+                    style={{
+                      ...btnStyle,
+                      outline: filter === key ? "1px solid var(--accent)" : undefined,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
+              {!selected?.result && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {selected?.status === "error"
+                    ? selected.error || "Error en inferencia"
+                    : "Sin resultados aún. Ejecutá Run."}
+                </p>
+              )}
+              {filteredRegions.map((r) => {
+                const color = PALETTE[r.id % PALETTE.length];
+                const active = hoveredRegion === r.id;
+                return (
+                  <div
+                    key={r.id}
+                    ref={(el) => {
+                      regionRefs.current[r.id] = el;
+                    }}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                    style={{
+                      background: active ? "var(--surface-raised)" : "transparent",
+                      border: `1px solid ${active ? color : "transparent"}`,
+                    }}
+                    onMouseEnter={() => setHoveredRegion(r.id)}
+                    onMouseLeave={() => setHoveredRegion(null)}
+                    onClick={() => scrollToRegion(r.id)}
+                  >
+                    <span className="w-7 shrink-0 text-[10px]" style={{ color }}>#{r.id}</span>
+                    <input
+                      value={r.text}
+                      onChange={(e) => updateRegionText(r.id, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                      style={{ color: "var(--text)" }}
+                    />
+                    <span className="shrink-0 text-[10px]" style={{ color: confColor(r.confidence) }}>
+                      {(r.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -486,6 +759,12 @@ export default function App() {
 
         {/* Viewer */}
         <main className="flex min-h-0 flex-col" style={{ background: "var(--bg)" }}>
+          <div
+            className="flex h-12 shrink-0 items-center justify-center border-b text-sm font-semibold"
+            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+          >
+            Input Image
+          </div>
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
             {selected ? (
               <div
@@ -604,80 +883,99 @@ export default function App() {
           className="flex min-h-0 flex-col border-l"
           style={{ borderColor: "var(--border)", background: "var(--surface)" }}
         >
-          <div className="space-y-2 border-b p-3" style={{ borderColor: "var(--border)" }}>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar texto…"
-              className="w-full rounded-md px-2 py-1.5 text-xs outline-none"
-              style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
-            />
-            <div className="flex gap-1">
-              {([
-                ["all", "Todas"],
-                ["low", "Baja conf."],
-                ["numbers", "Números"],
-              ] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setFilter(key)}
-                  className="rounded px-2 py-1 text-[10px]"
-                  style={{
-                    ...btnStyle,
-                    outline: filter === key ? "1px solid var(--accent)" : undefined,
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div
+            className="flex h-12 shrink-0 items-center justify-between border-b px-3"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div className="flex-1 text-center text-sm font-semibold">Result Text</div>
+            <button
+              type="button"
+              disabled={!cleanText}
+              onClick={copyCleanText}
+              className="rounded-md px-2.5 py-1.5 text-xs disabled:opacity-40"
+              style={btnStyle}
+            >
+              {copied ? "Copiado" : "Copiar"}
+            </button>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-            {!selected?.result && (
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+            {!selected?.result ? (
               <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                 {selected?.status === "error"
                   ? selected.error || "Error en inferencia"
                   : "Sin resultados aún. Ejecutá Run."}
               </p>
+            ) : (
+              <svg
+                viewBox={`0 0 ${resultLayout.canvasW} ${resultLayout.canvasH}`}
+                className="max-h-full w-full border bg-white shadow-sm"
+                style={{ borderColor: "var(--border)" }}
+                role="img"
+                aria-label="ResultText"
+              >
+                {resultLayout.regions.map((r, i) => {
+                  const color = PALETTE[i % PALETTE.length];
+                  const active = hoveredRegion === r.id;
+                  const vertical = r.height > r.width * 1.4 && r.text.length > 1;
+                  const fontSize = Math.max(
+                    (vertical ? r.width : r.height) * 0.85,
+                    8
+                  );
+                  const labelSize = Math.max(
+                    Math.min((vertical ? r.width : r.height) * 0.35, 14),
+                    8
+                  );
+                  return (
+                    <g
+                      key={r.id}
+                      onMouseEnter={() => setHoveredRegion(r.id)}
+                      onMouseLeave={() => setHoveredRegion(null)}
+                      onClick={() => scrollToRegion(r.id)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <rect
+                        x={r.x}
+                        y={r.y}
+                        width={r.width}
+                        height={r.height}
+                        fill={active ? `${color}18` : "none"}
+                        stroke={color}
+                        strokeWidth={active ? 2.5 : 1.5}
+                        rx={2}
+                      />
+                      <text
+                        x={vertical ? 0 : r.x}
+                        y={vertical ? 0 : r.y + r.height * 0.82}
+                        fill="#111827"
+                        fontSize={fontSize}
+                        fontFamily="system-ui, sans-serif"
+                        textLength={Math.max(vertical ? r.height : r.width, 1)}
+                        lengthAdjust="spacingAndGlyphs"
+                        transform={
+                          vertical
+                            ? `translate(${r.x + r.width * 0.85} ${r.y + r.height}) rotate(-90)`
+                            : undefined
+                        }
+                      >
+                        {r.text}
+                      </text>
+                      <text
+                        x={r.x + r.width}
+                        y={Math.max(r.y - 2, labelSize)}
+                        fill={confColor(r.confidence)}
+                        fontSize={labelSize}
+                        fontWeight={600}
+                        textAnchor="end"
+                        fontFamily="system-ui, sans-serif"
+                      >
+                        {(r.confidence * 100).toFixed(0)}%
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
             )}
-            {filteredRegions.map((r) => {
-              const color = PALETTE[r.id % PALETTE.length];
-              const active = hoveredRegion === r.id;
-              return (
-                <div
-                  key={r.id}
-                  ref={(el) => {
-                    regionRefs.current[r.id] = el;
-                  }}
-                  className="rounded-lg p-2"
-                  style={{
-                    background: "var(--surface-raised)",
-                    border: `1px solid ${active ? color : "var(--border)"}`,
-                  }}
-                  onMouseEnter={() => setHoveredRegion(r.id)}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                >
-                  <div className="mb-1 flex items-center justify-between text-[10px]" style={{ color: "var(--text-secondary)" }}>
-                    <span style={{ color }}>#{r.id}</span>
-                    <span>{(r.confidence * 100).toFixed(1)}%</span>
-                  </div>
-                  <input
-                    value={r.text}
-                    onChange={(e) => updateRegionText(r.id, e.target.value)}
-                    className="mb-1.5 w-full rounded px-1.5 py-1 text-xs outline-none"
-                    style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
-                  />
-                  <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "var(--border)" }}>
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.min(100, r.confidence * 100)}%`, background: confColor(r.confidence) }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
           </div>
 
           <div className="border-t p-3" style={{ borderColor: "var(--border)" }}>

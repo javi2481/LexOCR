@@ -14,3 +14,5 @@ dist/
 *.pem
 credentials.json
 secrets/
+# Local AI runtime state
+.atl/

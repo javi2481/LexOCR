@@ -31,6 +31,7 @@ ALLOWED_MIME = {
     "image/bmp",
     "image/gif",
     "image/webp",
+    "image/avif",
     "image/tiff",
     "image/tif",
     "image/x-tiff",
@@ -50,6 +51,7 @@ ALLOWED_EXT = {
     "bmp",
     "gif",
     "webp",
+    "avif",
     "tif",
     "tiff",
     "ico",
@@ -84,14 +86,14 @@ ocr_engine = None
 
 
 def get_ocr():
-    """Lazy-init PaddleOCR (API v3+/PaddleX)."""
+    """Lazy-init PaddleOCR PP-OCRv6 (unified multilingual, no lang)."""
     global ocr_engine
     if ocr_engine is not None:
         return ocr_engine
     from paddleocr import PaddleOCR
 
     kwargs = {
-        "lang": "es",
+        "ocr_version": "PP-OCRv6",
         "use_doc_orientation_classify": False,
         "use_doc_unwarping": False,
         "use_textline_orientation": False,
@@ -104,7 +106,8 @@ def get_ocr():
         try:
             ocr_engine = PaddleOCR(**kwargs)
         except TypeError:
-            ocr_engine = PaddleOCR(lang="es")
+            kwargs.pop("ocr_version", None)
+            ocr_engine = PaddleOCR(**kwargs) if kwargs else PaddleOCR()
     return ocr_engine
 
 
@@ -246,6 +249,8 @@ def _detect_format(data: bytes, filename: str, content_type: str) -> str:
             return kind
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "webp"
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis"):
+        return "avif"
     if data[:1] == b"P" and len(data) > 1 and data[1:2] in (b"3", b"6"):
         return "ppm"
 
@@ -269,6 +274,7 @@ def _detect_format(data: bytes, filename: str, content_type: str) -> str:
         "image/gif": "gif",
         "image/bmp": "bmp",
         "image/webp": "webp",
+        "image/avif": "avif",
         "image/tiff": "tiff",
         "image/tif": "tiff",
         "image/x-tiff": "tiff",
@@ -304,6 +310,11 @@ def _normalize_to_png(data: bytes, kind: str, image_id: str) -> Path:
         else:
             from io import BytesIO
 
+            if kind == "avif":
+                try:
+                    import pillow_avif  # noqa: F401
+                except ImportError:
+                    pass
             img = Image.open(BytesIO(data))
             img.load()
         if img.mode not in ("RGB", "L"):
@@ -348,6 +359,7 @@ async def upload(file: UploadFile = File(...)):
         "gif",
         "bmp",
         "webp",
+        "avif",
         "tiff",
         "ico",
         "ppm",
