@@ -10,13 +10,18 @@ import {
 import {
   upload,
   infer,
+  inferBatch,
   imageUrl,
+  getHealth,
+  downloadAnnotated,
   DEFAULT_INFER_OPTIONS,
+  OFFICIAL_DET_DEFAULTS,
   type InferOptions,
   type OcrMode,
   type OcrTier,
   type OCRResult,
   type Region,
+  type HealthInfo,
 } from "./api";
 
 type Status = "pending" | "processing" | "completed" | "error";
@@ -164,6 +169,28 @@ function polyPointsAttr(poly: number[][], scaleX: number, scaleY: number): strin
   return poly.map((p) => `${p[0] * scaleX},${p[1] * scaleY}`).join(" ");
 }
 
+const textWidthPerEmCache = new Map<string, number>();
+let textMeasureContext: CanvasRenderingContext2D | null = null;
+
+function textWidthPerEm(text: string): number {
+  const cached = textWidthPerEmCache.get(text);
+  if (cached !== undefined) return cached;
+
+  if (!textMeasureContext) {
+    textMeasureContext = document.createElement("canvas").getContext("2d");
+  }
+
+  const measurementFontSize = 100;
+  if (textMeasureContext) {
+    textMeasureContext.font = `${measurementFontSize}px system-ui, sans-serif`;
+  }
+  const width =
+    (textMeasureContext?.measureText(text).width ?? text.length * measurementFontSize * 0.6) /
+    measurementFontSize;
+  textWidthPerEmCache.set(text, width);
+  return width;
+}
+
 /** Geometría de lectura desde el quad de Paddle (p0→p1 = línea de texto). */
 type OrientedRegion = {
   id: number;
@@ -249,6 +276,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [lastMs, setLastMs] = useState<number | null>(null);
+  const [health, setHealth] = useState<HealthInfo | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -267,6 +295,30 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(OCR_LS_KEY, JSON.stringify(ocrOptions));
   }, [ocrOptions]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getHealth()
+      .then((info) => {
+        if (!cancelled) setHealth(info);
+      })
+      .catch(() => {
+        if (!cancelled) setHealth(null);
+      });
+    const id = window.setInterval(() => {
+      getHealth()
+        .then((info) => {
+          if (!cancelled) setHealth(info);
+        })
+        .catch(() => {
+          /* keep last */
+        });
+    }, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   useEffect(() => {
     const el = imgWrapRef.current;
@@ -402,17 +454,72 @@ export default function App() {
     if (!pending.length || busy) return;
     setBusy(true);
     setProgress({ done: 0, total: pending.length });
-    let done = 0;
+
+    // Asegurar upload de las que aún no tienen id de servidor
+    const ready: ImageItem[] = [];
     for (const item of pending) {
       const current = images.find((i) => i.localId === item.localId) ?? item;
       try {
-        await runOne(current);
-      } catch {
-        /* continue */
+        if (!current.id) {
+          updateImage(current.localId, { status: "processing", error: undefined });
+          const up = await upload(current.file);
+          const previewUrl = current.revokePreview
+            ? imageUrl(up.image_id)
+            : current.previewUrl;
+          if (current.revokePreview && current.previewUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(current.previewUrl);
+          }
+          const updated: ImageItem = {
+            ...current,
+            id: up.image_id,
+            previewUrl,
+            revokePreview: false,
+            status: "processing",
+          };
+          updateImage(current.localId, updated);
+          ready.push(updated);
+        } else {
+          updateImage(current.localId, { status: "processing", error: undefined });
+          ready.push({ ...current, status: "processing" });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error";
+        updateImage(current.localId, { status: "error", error: msg });
       }
-      done += 1;
-      setProgress({ done, total: pending.length });
     }
+
+    const ids = ready.map((r) => r.id!).filter(Boolean);
+    try {
+      if (ids.length) {
+        const results = await inferBatch(ids, ocrOptions);
+        const byId = new Map(results.map((r) => [r.image_id, r]));
+        for (const item of ready) {
+          const result = item.id ? byId.get(item.id) : undefined;
+          if (result) {
+            updateImage(item.localId, { status: "completed", result, id: item.id });
+            setLastMs(result.inference_time_ms);
+          } else if (item.id) {
+            // Fallback individual si el batch omitió el id
+            try {
+              await runOne(item);
+            } catch {
+              /* continue */
+            }
+          }
+        }
+      }
+    } catch {
+      // Si /infer/batch falla, fallback secuencial
+      for (const item of ready) {
+        try {
+          await runOne(item);
+        } catch {
+          /* continue */
+        }
+      }
+    }
+
+    setProgress({ done: pending.length, total: pending.length });
     setBusy(false);
   };
 
@@ -634,7 +741,7 @@ export default function App() {
                 min={0.5}
                 max={0.95}
                 step={0.05}
-                aria-label="Umbral de baja confianza"
+                aria-label="text_rec_score_thresh"
                 disabled={busy}
                 value={ocrOptions.conf_threshold}
                 onChange={(e) =>
@@ -645,6 +752,138 @@ export default function App() {
                 }
                 className="w-20 disabled:opacity-50"
               />
+            </label>
+            <label
+              className="flex items-center gap-1 text-[10px]"
+              style={{ color: "var(--text-secondary)" }}
+              title="text_det_thresh — Auto omite el param (default motor 0.3)"
+            >
+              <span>
+                Det{" "}
+                {ocrOptions.text_det_thresh == null
+                  ? "auto"
+                  : ocrOptions.text_det_thresh.toFixed(2)}
+              </span>
+              <input
+                type="range"
+                min={0.1}
+                max={0.9}
+                step={0.05}
+                aria-label="text_det_thresh"
+                disabled={busy}
+                value={ocrOptions.text_det_thresh ?? OFFICIAL_DET_DEFAULTS.text_det_thresh}
+                onChange={(e) =>
+                  setOcrOptions((o) => ({
+                    ...o,
+                    text_det_thresh: Number(e.target.value),
+                  }))
+                }
+                className="w-16 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={busy || ocrOptions.text_det_thresh == null}
+                aria-label="Reset text_det_thresh a auto"
+                onClick={() =>
+                  setOcrOptions((o) => {
+                    const next = { ...o };
+                    delete next.text_det_thresh;
+                    return next;
+                  })
+                }
+                className="rounded px-1 text-[9px] disabled:opacity-40"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                auto
+              </button>
+            </label>
+            <label
+              className="flex items-center gap-1 text-[10px]"
+              style={{ color: "var(--text-secondary)" }}
+              title="text_det_box_thresh — Auto omite el param (default motor 0.6)"
+            >
+              <span>
+                Box{" "}
+                {ocrOptions.text_det_box_thresh == null
+                  ? "auto"
+                  : ocrOptions.text_det_box_thresh.toFixed(2)}
+              </span>
+              <input
+                type="range"
+                min={0.1}
+                max={0.9}
+                step={0.05}
+                aria-label="text_det_box_thresh"
+                disabled={busy}
+                value={ocrOptions.text_det_box_thresh ?? OFFICIAL_DET_DEFAULTS.text_det_box_thresh}
+                onChange={(e) =>
+                  setOcrOptions((o) => ({
+                    ...o,
+                    text_det_box_thresh: Number(e.target.value),
+                  }))
+                }
+                className="w-16 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={busy || ocrOptions.text_det_box_thresh == null}
+                aria-label="Reset text_det_box_thresh a auto"
+                onClick={() =>
+                  setOcrOptions((o) => {
+                    const next = { ...o };
+                    delete next.text_det_box_thresh;
+                    return next;
+                  })
+                }
+                className="rounded px-1 text-[9px] disabled:opacity-40"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                auto
+              </button>
+            </label>
+            <label
+              className="flex items-center gap-1 text-[10px]"
+              style={{ color: "var(--text-secondary)" }}
+              title="text_det_unclip_ratio — Auto omite el param (default motor ~2.0)"
+            >
+              <span>
+                Unclip{" "}
+                {ocrOptions.text_det_unclip_ratio == null
+                  ? "auto"
+                  : ocrOptions.text_det_unclip_ratio.toFixed(1)}
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.1}
+                aria-label="text_det_unclip_ratio"
+                disabled={busy}
+                value={ocrOptions.text_det_unclip_ratio ?? OFFICIAL_DET_DEFAULTS.text_det_unclip_ratio}
+                onChange={(e) =>
+                  setOcrOptions((o) => ({
+                    ...o,
+                    text_det_unclip_ratio: Number(e.target.value),
+                  }))
+                }
+                className="w-16 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={busy || ocrOptions.text_det_unclip_ratio == null}
+                aria-label="Reset text_det_unclip_ratio a auto"
+                onClick={() =>
+                  setOcrOptions((o) => {
+                    const next = { ...o };
+                    delete next.text_det_unclip_ratio;
+                    return next;
+                  })
+                }
+                className="rounded px-1 text-[9px] disabled:opacity-40"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                auto
+              </button>
             </label>
           </div>
         </div>
@@ -662,6 +901,26 @@ export default function App() {
                 {fmt}
               </button>
             ))}
+            <button
+              type="button"
+              disabled={!selected?.result?.image_id || busy}
+              onClick={async () => {
+                if (!selected?.result?.image_id) return;
+                try {
+                  await downloadAnnotated(
+                    selected.result.image_id,
+                    `${selected.filename || "image"}_annotated.png`
+                  );
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              className="rounded px-2 py-1 text-xs uppercase disabled:opacity-40"
+              style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}
+              title="PNG anotado vía save_to_img()"
+            >
+              png
+            </button>
           </div>
           <button
             type="button"
@@ -1017,7 +1276,14 @@ export default function App() {
                 {resultLayout.regions.map((r, i) => {
                   const color = PALETTE[i % PALETTE.length];
                   const active = hoveredRegion === r.id;
-                  const fontSize = Math.max(r.textHeight * 0.85, 1);
+                  const naturalWidth = textWidthPerEm(r.text);
+                  const fontSize = Math.max(
+                    Math.min(
+                      r.textHeight * 0.85,
+                      naturalWidth > 0 ? r.textWidth / naturalWidth : r.textHeight * 0.85,
+                    ),
+                    1,
+                  );
                   const labelSize = Math.max(Math.min(r.textHeight * 0.35, 14), 8);
                   return (
                     <g
@@ -1041,8 +1307,6 @@ export default function App() {
                         fontFamily="system-ui, sans-serif"
                         textAnchor="middle"
                         dominantBaseline="central"
-                        textLength={Math.max(r.textWidth, 1)}
-                        lengthAdjust="spacingAndGlyphs"
                         transform={`translate(${r.cx} ${r.cy}) rotate(${r.angleDeg})`}
                       >
                         {r.text}
@@ -1101,6 +1365,9 @@ export default function App() {
               : "Listo"}
         </span>
         <span>Última: {lastMs != null ? `${(lastMs / 1000).toFixed(2)}s` : "—"}</span>
+        <span title={health?.cuda_compiled ? "paddle.is_compiled_with_cuda() = true" : "CPU"}>
+          Device: {health?.device ?? "—"}
+        </span>
         <span className="ml-auto">{images.length} imágenes</span>
       </footer>
     </div>

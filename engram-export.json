@@ -1,11 +1,11 @@
 {
   "version": "0.1.0",
-  "exported_at": "2026-07-29T20:11:04Z",
+  "exported_at": "2026-07-30T00:41:00Z",
   "sessions": [
     {
       "id": "manual-save-document-intelligence",
       "project": "document-intelligence",
-      "directory": "/home/javier/document-intelligence",
+      "directory": "c:/Users/Equipo/document-intelligence",
       "started_at": "2026-07-29 19:58:47"
     }
   ],
@@ -16,14 +16,14 @@
       "session_id": "manual-save-document-intelligence",
       "type": "manual",
       "title": "IDP OCR Studio — overview",
-      "content": "Academic low-code MVP: React 19 + Vite + Tailwind v4 frontend; FastAPI + PaddleOCR single-file backend.\nRepo: https://github.com/javi2481/document-intelligence.git\nPhilosophy: max ~10 app files, no Zustand/Konva/shadcn/Celery/multi-OCR engines.\nStructure: frontend/ (App.tsx, api.ts, index.css) + backend/main.py + requirements.txt + README.md\nFormats: PNG JPG WEBP GIF BMP TIFF ICO PPM + PDF first page (normalized to PNG).\nRun: backend `python -m uvicorn main:app --reload --port 8000`; frontend `npm run dev` → http://localhost:5173\nPaddleOCR init needs enable_mkldnn=False; uses predict() API; PADDLE_PDX_CACHE_HOME in backend/.paddlex\nExport is client-side (JSON/CSV/TXT) so edits are included.\nTheme dark-first with localStorage.",
+      "content": "Academic low-code MVP: React 19 + Vite + Tailwind v4 frontend; FastAPI + PaddleOCR PP-OCRv6 single-file backend.\nRepo: https://github.com/javi2481/document-intelligence.git\nPhilosophy: orquestar API oficial PaddleOCR 3.x (no inventar); max ~10 app files; sin Docker/DB/colas/auth.\nStructure: frontend/ (App.tsx, api.ts, index.css) + backend/main.py + requirements.txt + README.md + .env.example\nFormats: PNG JPG WEBP GIF BMP TIFF ICO PPM AVIF. PDF NO soportado.\nRun: backend `python -m uvicorn main:app --reload --host 0.0.0.0 --port 8100`; frontend `npm run dev` → http://localhost:5173 (VITE_API_URL).\nPaddle: enable_mkldnn=False; predict() + text_rec_score_thresh/text_det_*; warmup lifespan; device en /health; export annotated save_to_img.\nExport: JSON/CSV/TXT cliente + PNG anotado server-side.\nTema dark-first con localStorage (ocr_options).",
       "project": "document-intelligence",
       "scope": "project",
-      "revision_count": 1,
+      "revision_count": 2,
       "duplicate_count": 1,
-      "last_seen_at": "2026-07-29 19:58:47",
+      "last_seen_at": "2026-07-29 20:41:00",
       "created_at": "2026-07-29 19:58:47",
-      "updated_at": "2026-07-29 19:58:47"
+      "updated_at": "2026-07-29 20:41:00"
     },
     {
       "id": 78,
@@ -31,14 +31,29 @@
       "session_id": "manual-save-document-intelligence",
       "type": "manual",
       "title": "IDP OCR Studio — continue on another PC",
-      "content": "git clone https://github.com/javi2481/document-intelligence.git\ncd document-intelligence/backend && python3.11 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt\npython -m uvicorn main:app --reload --port 8000\n# other terminal:\ncd frontend && npm install && npm run dev\n\nFirst PaddleOCR run downloads models (slow).",
+      "content": "git clone https://github.com/javi2481/document-intelligence.git\ncd document-intelligence\nengram import engram-export.json\nengram sync --import\ncd backend && python3.11 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt\npython -m uvicorn main:app --reload --host 0.0.0.0 --port 8100\n# other terminal:\ncd frontend && npm install && npm run dev\n\nFirst start: warmup descarga/carga modelos (puede tardar). Ver .env.example.\nNext: pruebas manuales (umbrales Det/Box/Unclip, Conf, export PNG, Device en status bar).",
+      "project": "document-intelligence",
+      "scope": "project",
+      "revision_count": 2,
+      "duplicate_count": 1,
+      "last_seen_at": "2026-07-29 20:41:00",
+      "created_at": "2026-07-29 19:58:47",
+      "updated_at": "2026-07-29 20:41:00"
+    },
+    {
+      "id": 586,
+      "sync_id": "obs-cotejo-p0-p2",
+      "session_id": "manual-save-document-intelligence",
+      "type": "decision",
+      "title": "Cotejo PaddleOCR implementado P0-P2",
+      "content": "**What**: Backlog cotejo: .env.example, text_rec_score_thresh en predict, UI text_det_*, warmup lifespan, /health device, /export/{id}/annotated save_to_img, Run All via inferBatch.\n**Why**: Alinear con PaddleOCR 3.x oficial; no inventar APIs (sin det_db_*/use_dilation).\n**Where**: backend/main.py, frontend/src/App.tsx, frontend/src/api.ts, README.md, plan/resulttext_nube_inflada.md\n**Next**: pruebas manuales mañana.",
       "project": "document-intelligence",
       "scope": "project",
       "revision_count": 1,
       "duplicate_count": 1,
-      "last_seen_at": "2026-07-29 19:58:47",
-      "created_at": "2026-07-29 19:58:47",
-      "updated_at": "2026-07-29 19:58:47"
+      "last_seen_at": "2026-07-29 20:41:59",
+      "created_at": "2026-07-29 20:41:59",
+      "updated_at": "2026-07-29 20:41:59"
     }
   ],
   "prompts": []

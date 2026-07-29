@@ -4,20 +4,22 @@ overview: Reescribir el panel ResultText como SVG espacial fiel al original, con
 todos:
   - id: avif-backend
     content: Agregar AVIF a ALLOWED_*, magic, mime_map y upload(); pillow-avif-plugin si hace falta
-    status: pending
+    status: completed
   - id: avif-frontend
     content: Sumar avif a ACCEPTED_EXT, BROWSER_PREVIEW_EXT y accept del input
-    status: pending
+    status: completed
   - id: svg-resulttext
     content: Reemplazar divs absolutos por SVG viewBox + textLength + confianza fuera de la caja
-    status: pending
+    status: completed
   - id: inflate-cloud
     content: "Implementar inflateIfCrowded: detectar solapes, expandir desde centroide, resolver colisiones, agrandar canvas"
-    status: pending
+    status: cancelled
   - id: e2e-tres
     content: Probar upload+infer con las 3 imágenes de imagenes_prueba y validar build
     status: pending
 ---
+
+> **Estado (2026-07-29):** AVIF y ResultText SVG espacial ya están en código. `inflateIfCrowded` se cancela a favor de ajustar `text_det_unclip_ratio` (API oficial PaddleOCR 3.x) desde InferOptions/UI.
 
 # Plan: ResultText espacial + nube inflada + AVIF
 

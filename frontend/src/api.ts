@@ -46,13 +46,35 @@ export type UploadResponse = {
   source_format?: string;
 };
 
+export type HealthInfo = {
+  ok: boolean;
+  cuda_compiled: boolean;
+  device: string;
+  engines_cached?: number;
+};
+
 export const DEFAULT_INFER_OPTIONS: InferOptions = {
   mode: "fast",
   tier: "medium",
   conf_threshold: 0.9,
 };
 
+/** Defaults oficiales PaddleOCR 3.x (solo UI; no se envían hasta que el usuario los fija). */
+export const OFFICIAL_DET_DEFAULTS = {
+  text_det_thresh: 0.3,
+  text_det_box_thresh: 0.6,
+  text_det_unclip_ratio: 2.0,
+} as const;
+
 export const imageUrl = (imageId: string) => `${API}/image/${imageId}`;
+
+export const annotatedExportUrl = (imageId: string) => `${API}/export/${imageId}/annotated`;
+
+export async function getHealth(): Promise<HealthInfo> {
+  const res = await fetch(`${API}/health`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
 export async function upload(file: File): Promise<UploadResponse> {
   const form = new FormData();
@@ -89,4 +111,16 @@ export async function getStatus(imageId: string): Promise<{ image_id: string; st
   const res = await fetch(`${API}/status/${imageId}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+export async function downloadAnnotated(imageId: string, filename: string): Promise<void> {
+  const res = await fetch(annotatedExportUrl(imageId));
+  if (!res.ok) throw new Error(await res.text());
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".png") ? filename : `${filename}_annotated.png`;
+  a.click();
+  URL.revokeObjectURL(url);
 }

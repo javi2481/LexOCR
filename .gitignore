@@ -16,3 +16,4 @@ credentials.json
 secrets/
 # Local AI runtime state
 .atl/
+.gstack/

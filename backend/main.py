@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +24,14 @@ from PIL import Image
 
 UPLOAD_DIR = _ROOT / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+ANNOTATED_DIR = UPLOAD_DIR / "annotated"
+ANNOTATED_DIR.mkdir(exist_ok=True)
+
+# Runtime device (cpu / gpu:0) — detectado una vez
+_DEVICE_INFO: dict[str, Any] = {
+    "cuda_compiled": False,
+    "device": "cpu",
+}
 
 ALLOWED_MIME = {
     "image/png",
@@ -75,19 +84,38 @@ MAGIC_PREFIXES = (
 OcrMode = Literal["fast", "document"]
 OcrTier = Literal["tiny", "small", "medium"]
 
-app = FastAPI(title="IDP OCR Studio")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # image_id -> metadata
 store: dict[str, dict[str, Any]] = {}
 
 # (mode, tier) -> PaddleOCR instance
 _ocr_cache: dict[tuple[str, str], Any] = {}
+
+
+def _detect_device() -> dict[str, Any]:
+    """Detecta CUDA / device según API oficial paddle.is_compiled_with_cuda()."""
+    cuda = False
+    device = "cpu"
+    try:
+        import paddle
+
+        cuda = bool(paddle.is_compiled_with_cuda())
+        if cuda:
+            try:
+                count = int(paddle.device.cuda.device_count())
+                device = "gpu:0" if count > 0 else "cpu"
+                if count <= 0:
+                    cuda = False
+            except Exception:
+                device = "gpu:0"
+    except Exception:
+        pass
+    return {"cuda_compiled": cuda, "device": device}
+
+
+def _refresh_device_info() -> dict[str, Any]:
+    global _DEVICE_INFO
+    _DEVICE_INFO = _detect_device()
+    return _DEVICE_INFO
 
 
 class InferOptions(BaseModel):
@@ -102,14 +130,16 @@ class InferOptions(BaseModel):
     text_det_limit_type: str | None = None
 
 
-def _det_predict_kwargs(options: InferOptions) -> dict[str, Any]:
-    """Solo claves con valor; omitidas → Paddle usa su default."""
-    mapping = {
+def _predict_kwargs(options: InferOptions) -> dict[str, Any]:
+    """Kwargs oficiales para predict(); omitidos → default interno de Paddle."""
+    mapping: dict[str, Any] = {
         "text_det_box_thresh": options.text_det_box_thresh,
         "text_det_thresh": options.text_det_thresh,
         "text_det_unclip_ratio": options.text_det_unclip_ratio,
         "text_det_limit_side_len": options.text_det_limit_side_len,
         "text_det_limit_type": options.text_det_limit_type,
+        # Capa producto: conf_threshold → text_rec_score_thresh oficial
+        "text_rec_score_thresh": options.conf_threshold,
     }
     return {k: v for k, v in mapping.items() if v is not None}
 
@@ -122,6 +152,9 @@ def get_ocr(mode: OcrMode = "fast", tier: OcrTier = "medium"):
 
     from paddleocr import PaddleOCR
 
+    if not _DEVICE_INFO.get("device"):
+        _refresh_device_info()
+
     document = mode == "document"
     kwargs: dict[str, Any] = {
         "ocr_version": "PP-OCRv6",
@@ -130,6 +163,7 @@ def get_ocr(mode: OcrMode = "fast", tier: OcrTier = "medium"):
         "use_textline_orientation": True,
         "text_detection_model_name": f"PP-OCRv6_{tier}_det",
         "text_recognition_model_name": f"PP-OCRv6_{tier}_rec",
+        "device": _DEVICE_INFO["device"],
         # oneDNN/mkldnn rompe predict en algunos builds Windows (PIR Unimplemented)
         "enable_mkldnn": False,
     }
@@ -138,6 +172,7 @@ def get_ocr(mode: OcrMode = "fast", tier: OcrTier = "medium"):
     # Progressive fallback if installed API rejects some kwargs
     drop_order = (
         "enable_mkldnn",
+        "device",
         "text_detection_model_name",
         "text_recognition_model_name",
         "ocr_version",
@@ -166,6 +201,46 @@ def get_ocr(mode: OcrMode = "fast", tier: OcrTier = "medium"):
 
     _ocr_cache[key] = engine
     return engine
+
+
+def _warmup_default_engine() -> None:
+    """Carga el engine default e infiere una imagen dummy (patrón de despliegue)."""
+    _refresh_device_info()
+    engine = get_ocr("fast", "medium")
+    dummy = UPLOAD_DIR / "_warmup.png"
+    Image.new("RGB", (32, 32), color=(255, 255, 255)).save(dummy, format="PNG")
+    try:
+        if hasattr(engine, "predict"):
+            engine.predict(str(dummy))
+        elif hasattr(engine, "ocr"):
+            try:
+                engine.ocr(str(dummy), cls=True)
+            except TypeError:
+                engine.ocr(str(dummy))
+    finally:
+        try:
+            dummy.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        _warmup_default_engine()
+    except Exception as exc:
+        # No bloquear el arranque si el warmup falla (modelos aún no descargados, etc.)
+        print(f"[warmup] skipped: {exc}")
+    yield
+
+
+app = FastAPI(title="IDP OCR Studio", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class Region(BaseModel):
@@ -235,29 +310,27 @@ def _normalize_poly(poly: Any) -> list[list[float]]:
     return points
 
 
-def _run_paddle(
-    path: str,
-    mode: OcrMode = "fast",
-    tier: OcrTier = "medium",
-    options: InferOptions | None = None,
-) -> list[tuple[list, tuple[str, float]]]:
-    """Normalize PaddleOCR output to [(polygon, (text, conf)), ...]."""
-    engine = get_ocr(mode, tier)
-    lines: list[tuple[list, tuple[str, float]]] = []
-    det_kwargs = _det_predict_kwargs(options) if options is not None else {}
-
-    raw = None
+def _call_predict(engine: Any, path: str, options: InferOptions | None) -> Any:
+    """Invoca predict() con kwargs oficiales; fallback a ocr() legacy."""
+    pred_kwargs = _predict_kwargs(options) if options is not None else {}
     if hasattr(engine, "predict"):
         try:
-            raw = engine.predict(path, **det_kwargs) if det_kwargs else engine.predict(path)
+            return engine.predict(path, **pred_kwargs) if pred_kwargs else engine.predict(path)
         except TypeError:
-            raw = engine.predict(path)
-    else:
-        try:
-            raw = engine.ocr(path, cls=True)
-        except TypeError:
-            raw = engine.ocr(path)
+            # API no acepta alguno de los kwargs → reintentar sin ellos
+            try:
+                return engine.predict(path)
+            except TypeError:
+                pass
+    try:
+        return engine.ocr(path, cls=True)
+    except TypeError:
+        return engine.ocr(path)
 
+
+def _parse_paddle_raw(raw: Any) -> list[tuple[list, tuple[str, float]]]:
+    """Normalize PaddleOCR output to [(polygon, (text, conf)), ...]."""
+    lines: list[tuple[list, tuple[str, float]]] = []
     if not raw:
         return lines
 
@@ -296,6 +369,17 @@ def _run_paddle(
                 if isinstance(rec, (list, tuple)) and len(rec) >= 2:
                     lines.append((bbox_raw, (str(rec[0]), float(rec[1]))))
     return lines
+
+
+def _run_paddle(
+    path: str,
+    mode: OcrMode = "fast",
+    tier: OcrTier = "medium",
+    options: InferOptions | None = None,
+) -> list[tuple[list, tuple[str, float]]]:
+    engine = get_ocr(mode, tier)
+    raw = _call_predict(engine, path, options)
+    return _parse_paddle_raw(raw)
 
 
 def _polygon_to_bbox(poly: list) -> dict[str, float]:
@@ -444,7 +528,13 @@ def _build_result(
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    info = _DEVICE_INFO if _DEVICE_INFO.get("device") else _refresh_device_info()
+    return {
+        "ok": True,
+        "cuda_compiled": bool(info.get("cuda_compiled")),
+        "device": info.get("device", "cpu"),
+        "engines_cached": len(_ocr_cache),
+    }
 
 
 @app.get("/image/{image_id}")
@@ -455,6 +545,76 @@ def get_image(image_id: str):
     if not path.exists():
         raise HTTPException(404, "Archivo no encontrado")
     return FileResponse(path, media_type="image/png", filename=f"{image_id}.png")
+
+
+@app.get("/export/{image_id}/annotated")
+def export_annotated(image_id: str):
+    """PNG con bounding boxes vía result.save_to_img() (API oficial)."""
+    if image_id not in store:
+        raise HTTPException(404, "Imagen no encontrada")
+    item = store[image_id]
+    path = Path(item["path"])
+    if not path.exists():
+        raise HTTPException(404, "Archivo no encontrado")
+
+    raw_opts = item.get("last_options") or {}
+    try:
+        options = InferOptions(**raw_opts)
+    except Exception:
+        options = InferOptions()
+
+    engine = get_ocr(options.mode, options.tier)
+    try:
+        raw = _call_predict(engine, str(path), options)
+    except Exception as exc:
+        raise HTTPException(500, f"Error OCR al anotar: {exc}") from exc
+
+    if not raw:
+        raise HTTPException(404, "Sin resultado OCR para anotar")
+
+    out_dir = ANNOTATED_DIR / image_id
+    if out_dir.exists():
+        for old in out_dir.iterdir():
+            try:
+                old.unlink()
+            except Exception:
+                pass
+    else:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    pages = raw if isinstance(raw, list) else [raw]
+    saved = False
+    for page in pages:
+        if page is None:
+            continue
+        if hasattr(page, "save_to_img"):
+            try:
+                page.save_to_img(str(out_dir))
+                saved = True
+            except TypeError:
+                page.save_to_img(save_path=str(out_dir))
+                saved = True
+
+    if not saved:
+        raise HTTPException(501, "save_to_img no disponible en este resultado")
+
+    candidates = sorted(
+        [p for p in out_dir.iterdir() if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg")],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        candidates = sorted([p for p in out_dir.iterdir() if p.is_file()], key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        raise HTTPException(500, "No se generó imagen anotada")
+
+    out_file = candidates[0]
+    stem = Path(item.get("filename") or image_id).stem
+    return FileResponse(
+        out_file,
+        media_type="image/png",
+        filename=f"{stem}_annotated.png",
+    )
 
 
 @app.post("/upload")
@@ -478,6 +638,7 @@ async def upload(file: UploadFile = File(...)):
         "status": "pending",
         "result": None,
         "source_format": kind,
+        "last_options": None,
     }
     return {
         "image_id": image_id,
@@ -494,6 +655,7 @@ def infer(image_id: str, options: InferOptions = Body(default_factory=InferOptio
 
     item = store[image_id]
     item["status"] = "processing"
+    item["last_options"] = options.model_dump()
 
     try:
         start = time.time()
