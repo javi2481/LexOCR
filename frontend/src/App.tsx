@@ -15,9 +15,7 @@ import {
   getHealth,
   downloadAnnotated,
   DEFAULT_INFER_OPTIONS,
-  OFFICIAL_DET_DEFAULTS,
   type InferOptions,
-  type OcrMode,
   type OcrTier,
   type OCRResult,
   type Region,
@@ -63,33 +61,12 @@ function loadOcrOptions(): InferOptions {
     const raw = localStorage.getItem(OCR_LS_KEY);
     if (!raw) return { ...DEFAULT_INFER_OPTIONS };
     const parsed = JSON.parse(raw) as Partial<InferOptions>;
-    const mode: OcrMode = parsed.mode === "document" ? "document" : "fast";
     const tier: OcrTier =
       parsed.tier === "tiny" || parsed.tier === "small" || parsed.tier === "medium"
         ? parsed.tier
         : "medium";
-    const thr =
-      typeof parsed.conf_threshold === "number"
-        ? Math.min(0.95, Math.max(0.5, parsed.conf_threshold))
-        : 0.9;
-    const opts: InferOptions = { mode, tier, conf_threshold: thr };
-    // Passthrough opcional: solo si el usuario ya los guardó; sin inventar defaults
-    if (typeof parsed.text_det_box_thresh === "number") {
-      opts.text_det_box_thresh = parsed.text_det_box_thresh;
-    }
-    if (typeof parsed.text_det_thresh === "number") {
-      opts.text_det_thresh = parsed.text_det_thresh;
-    }
-    if (typeof parsed.text_det_unclip_ratio === "number") {
-      opts.text_det_unclip_ratio = parsed.text_det_unclip_ratio;
-    }
-    if (typeof parsed.text_det_limit_side_len === "number") {
-      opts.text_det_limit_side_len = parsed.text_det_limit_side_len;
-    }
-    if (typeof parsed.text_det_limit_type === "string" && parsed.text_det_limit_type) {
-      opts.text_det_limit_type = parsed.text_det_limit_type;
-    }
-    return opts;
+    // Solo se expone Tier en UI; resto = defaults de producto / Paddle
+    return { ...DEFAULT_INFER_OPTIONS, tier };
   } catch {
     return { ...DEFAULT_INFER_OPTIONS };
   }
@@ -270,8 +247,6 @@ export default function App() {
     const saved = localStorage.getItem("theme");
     return saved === "light" ? "light" : "dark";
   });
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "low" | "numbers">("all");
   const [ocrOptions, setOcrOptions] = useState<InferOptions>(() => loadOcrOptions());
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -279,6 +254,9 @@ export default function App() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [wordsOpen, setWordsOpen] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "low" | "numbers">("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regionRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const imgWrapRef = useRef<HTMLDivElement>(null);
@@ -660,14 +638,41 @@ export default function App() {
     regionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
+  const openFilePicker = () => fileInputRef.current?.click();
+
+  const dropHandlers = {
+    onDragOver: (e: DragEvent) => {
+      e.preventDefault();
+      setDragOver(true);
+    },
+    onDragLeave: () => setDragOver(false),
+    onDrop,
+  };
+
+  const emptyDropStyle: CSSProperties = {
+    borderColor: dragOver ? "var(--accent)" : "var(--border)",
+    background: dragOver
+      ? "color-mix(in srgb, var(--accent) 12%, transparent)"
+      : "var(--surface)",
+  };
+
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--bg)", color: "var(--text)" }}>
-      {/* Header */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => e.target.files && addFiles(e.target.files)}
+      />
+
+      {/* Toolbar — acciones globales */}
       <header
-        className="flex h-12 shrink-0 items-center justify-between border-b px-4"
+        className="flex h-12 shrink-0 flex-wrap items-center gap-2 border-b px-3"
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div
             className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white"
             style={{ background: "var(--accent)" }}
@@ -682,212 +687,62 @@ export default function App() {
               color: "var(--text-secondary)",
               border: "1px solid var(--border)",
             }}
-            title="Motor y opciones activas"
+            title="Motor y tier activos"
           >
-            PP-OCRv6 · {selected?.result?.ocr_tier ?? ocrOptions.tier} ·{" "}
-            {selected?.result?.ocr_mode ?? ocrOptions.mode}
+            PP-OCRv6 · {selected?.result?.ocr_tier ?? ocrOptions.tier}
           </span>
-          <div className="ml-1 flex flex-wrap items-center gap-2" role="group" aria-label="Opciones OCR">
-            <div className="flex rounded border" style={{ borderColor: "var(--border)" }}>
-              {(
-                [
-                  ["fast", "Rápido"],
-                  ["document", "Documento"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  disabled={busy}
-                  aria-pressed={ocrOptions.mode === value}
-                  aria-label={`Modo ${label}`}
-                  onClick={() => setOcrOptions((o) => ({ ...o, mode: value }))}
-                  className="px-2 py-1 text-[10px] font-medium disabled:opacity-50"
-                  style={{
-                    background:
-                      ocrOptions.mode === value ? "var(--accent)" : "var(--surface-raised)",
-                    color: ocrOptions.mode === value ? "#fff" : "var(--text-secondary)",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <label className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-secondary)" }}>
-              <span>Tier</span>
-              <select
-                aria-label="Tier del modelo"
-                disabled={busy}
-                value={ocrOptions.tier}
-                onChange={(e) =>
-                  setOcrOptions((o) => ({ ...o, tier: e.target.value as OcrTier }))
-                }
-                className="rounded border px-1 py-0.5 text-[10px] disabled:opacity-50"
-                style={{
-                  background: "var(--surface-raised)",
-                  borderColor: "var(--border)",
-                  color: "var(--text)",
-                }}
-              >
-                <option value="tiny">tiny</option>
-                <option value="small">small</option>
-                <option value="medium">medium</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-secondary)" }}>
-              <span>Conf {(ocrOptions.conf_threshold * 100).toFixed(0)}%</span>
-              <input
-                type="range"
-                min={0.5}
-                max={0.95}
-                step={0.05}
-                aria-label="text_rec_score_thresh"
-                disabled={busy}
-                value={ocrOptions.conf_threshold}
-                onChange={(e) =>
-                  setOcrOptions((o) => ({
-                    ...o,
-                    conf_threshold: Number(e.target.value),
-                  }))
-                }
-                className="w-20 disabled:opacity-50"
-              />
-            </label>
-            <label
-              className="flex items-center gap-1 text-[10px]"
-              style={{ color: "var(--text-secondary)" }}
-              title="text_det_thresh — Auto omite el param (default motor 0.3)"
+          <label className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-secondary)" }}>
+            <span>Tier</span>
+            <select
+              aria-label="Tier del modelo"
+              disabled={busy}
+              value={ocrOptions.tier}
+              onChange={(e) =>
+                setOcrOptions((o) => ({ ...o, tier: e.target.value as OcrTier }))
+              }
+              className="rounded border px-1 py-0.5 text-[10px] disabled:opacity-50"
+              style={{
+                background: "var(--surface-raised)",
+                borderColor: "var(--border)",
+                color: "var(--text)",
+              }}
             >
-              <span>
-                Det{" "}
-                {ocrOptions.text_det_thresh == null
-                  ? "auto"
-                  : ocrOptions.text_det_thresh.toFixed(2)}
-              </span>
-              <input
-                type="range"
-                min={0.1}
-                max={0.9}
-                step={0.05}
-                aria-label="text_det_thresh"
-                disabled={busy}
-                value={ocrOptions.text_det_thresh ?? OFFICIAL_DET_DEFAULTS.text_det_thresh}
-                onChange={(e) =>
-                  setOcrOptions((o) => ({
-                    ...o,
-                    text_det_thresh: Number(e.target.value),
-                  }))
-                }
-                className="w-16 disabled:opacity-50"
-              />
-              <button
-                type="button"
-                disabled={busy || ocrOptions.text_det_thresh == null}
-                aria-label="Reset text_det_thresh a auto"
-                onClick={() =>
-                  setOcrOptions((o) => {
-                    const next = { ...o };
-                    delete next.text_det_thresh;
-                    return next;
-                  })
-                }
-                className="rounded px-1 text-[9px] disabled:opacity-40"
-                style={{ border: "1px solid var(--border)" }}
-              >
-                auto
-              </button>
-            </label>
-            <label
-              className="flex items-center gap-1 text-[10px]"
-              style={{ color: "var(--text-secondary)" }}
-              title="text_det_box_thresh — Auto omite el param (default motor 0.6)"
-            >
-              <span>
-                Box{" "}
-                {ocrOptions.text_det_box_thresh == null
-                  ? "auto"
-                  : ocrOptions.text_det_box_thresh.toFixed(2)}
-              </span>
-              <input
-                type="range"
-                min={0.1}
-                max={0.9}
-                step={0.05}
-                aria-label="text_det_box_thresh"
-                disabled={busy}
-                value={ocrOptions.text_det_box_thresh ?? OFFICIAL_DET_DEFAULTS.text_det_box_thresh}
-                onChange={(e) =>
-                  setOcrOptions((o) => ({
-                    ...o,
-                    text_det_box_thresh: Number(e.target.value),
-                  }))
-                }
-                className="w-16 disabled:opacity-50"
-              />
-              <button
-                type="button"
-                disabled={busy || ocrOptions.text_det_box_thresh == null}
-                aria-label="Reset text_det_box_thresh a auto"
-                onClick={() =>
-                  setOcrOptions((o) => {
-                    const next = { ...o };
-                    delete next.text_det_box_thresh;
-                    return next;
-                  })
-                }
-                className="rounded px-1 text-[9px] disabled:opacity-40"
-                style={{ border: "1px solid var(--border)" }}
-              >
-                auto
-              </button>
-            </label>
-            <label
-              className="flex items-center gap-1 text-[10px]"
-              style={{ color: "var(--text-secondary)" }}
-              title="text_det_unclip_ratio — Auto omite el param (default motor ~2.0)"
-            >
-              <span>
-                Unclip{" "}
-                {ocrOptions.text_det_unclip_ratio == null
-                  ? "auto"
-                  : ocrOptions.text_det_unclip_ratio.toFixed(1)}
-              </span>
-              <input
-                type="range"
-                min={1}
-                max={3}
-                step={0.1}
-                aria-label="text_det_unclip_ratio"
-                disabled={busy}
-                value={ocrOptions.text_det_unclip_ratio ?? OFFICIAL_DET_DEFAULTS.text_det_unclip_ratio}
-                onChange={(e) =>
-                  setOcrOptions((o) => ({
-                    ...o,
-                    text_det_unclip_ratio: Number(e.target.value),
-                  }))
-                }
-                className="w-16 disabled:opacity-50"
-              />
-              <button
-                type="button"
-                disabled={busy || ocrOptions.text_det_unclip_ratio == null}
-                aria-label="Reset text_det_unclip_ratio a auto"
-                onClick={() =>
-                  setOcrOptions((o) => {
-                    const next = { ...o };
-                    delete next.text_det_unclip_ratio;
-                    return next;
-                  })
-                }
-                className="rounded px-1 text-[9px] disabled:opacity-40"
-                style={{ border: "1px solid var(--border)" }}
-              >
-                auto
-              </button>
-            </label>
-          </div>
+              <option value="tiny">tiny</option>
+              <option value="small">small</option>
+              <option value="medium">medium</option>
+            </select>
+          </label>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex gap-1" role="group" aria-label="Acciones de sesión">
+            <button
+              type="button"
+              disabled={busy || !selected}
+              onClick={runSelected}
+              className="rounded-md px-2.5 py-1 text-xs font-medium text-white disabled:opacity-40"
+              style={{ background: "var(--accent)" }}
+            >
+              Run
+            </button>
+            <button
+              type="button"
+              disabled={busy || !images.some((i) => i.status === "pending" || i.status === "error")}
+              onClick={runAll}
+              className="rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-40"
+              style={btnStyle}
+            >
+              Run All
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="rounded-md px-2.5 py-1 text-xs disabled:opacity-40"
+              style={{ ...btnStyle, color: "var(--error)" }}
+            >
+              Clear
+            </button>
+          </div>
           <div className="flex gap-1">
             {(["json", "csv", "txt"] as const).map((fmt) => (
               <button
@@ -896,7 +751,7 @@ export default function App() {
                 disabled={!selected?.result}
                 onClick={() => exportResult(fmt)}
                 className="rounded px-2 py-1 text-xs uppercase disabled:opacity-40"
-                style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}
+                style={btnStyle}
               >
                 {fmt}
               </button>
@@ -916,7 +771,7 @@ export default function App() {
                 }
               }}
               className="rounded px-2 py-1 text-xs uppercase disabled:opacity-40"
-              style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}
+              style={btnStyle}
               title="PNG anotado vía save_to_img()"
             >
               png
@@ -926,7 +781,7 @@ export default function App() {
             type="button"
             onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
             className="rounded p-1.5"
-            style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}
+            style={btnStyle}
             aria-label="Cambiar tema"
           >
             {theme === "dark" ? <IconSun /> : <IconMoon />}
@@ -934,85 +789,439 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main grid */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_minmax(380px,1fr)]">
-        {/* Gallery */}
+      {/* Cinta de métricas full-width */}
+      <div
+        className="grid shrink-0 grid-cols-2 gap-2 border-b p-2 sm:grid-cols-4"
+        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        aria-label="Métricas"
+      >
+        <Metric
+          value={selected?.result ? `${(selected.result.confidence_avg * 100).toFixed(1)}%` : "—"}
+          label="Confianza avg"
+        />
+        <Metric
+          value={selected?.result ? `${(selected.result.inference_time_ms / 1000).toFixed(2)}s` : "—"}
+          label="Tiempo"
+        />
+        <Metric value={selected?.result ? String(selected.result.regions_count) : "—"} label="Regiones" />
+        <Metric
+          value={selected?.result ? String(selected.result.low_confidence_count) : "—"}
+          label="Baja conf."
+        />
+      </div>
+
+      {/* Workspace: filmstrip + gemelos */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:flex-row">
+        {/* Filmstrip */}
         <aside
-          className="flex min-h-0 flex-col border-r"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+          className="flex shrink-0 gap-1.5 overflow-x-auto md:w-12 md:flex-col md:overflow-x-hidden md:overflow-y-auto"
+          aria-label="Miniaturas"
         >
-          <div
-            className="m-3 cursor-pointer rounded-lg border-2 border-dashed p-4 text-center text-xs transition-colors"
-            style={{
-              borderColor: dragOver ? "var(--accent)" : "var(--border)",
-              background: dragOver ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-raised)",
-              color: "var(--text-secondary)",
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Arrastrá imágenes o pegá (Ctrl+V)
-            <div className="mt-1 text-[10px] opacity-70">PNG JPG WEBP AVIF TIFF GIF BMP ICO PPM</div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => e.target.files && addFiles(e.target.files)}
-            />
-          </div>
-
-          <div className="shrink-0 px-3 pb-3">
-            <div className="grid grid-cols-2 gap-2">
-              {images.map((img) => (
-                <button
-                  key={img.localId}
-                  type="button"
-                  onClick={() => setSelectedId(img.localId)}
-                  onDoubleClick={() => removeOne(img.localId)}
-                  className="group relative overflow-hidden rounded-md text-left"
-                  style={{
-                    border: `2px solid ${selectedId === img.localId ? "var(--accent)" : STATUS_BORDER[img.status]}`,
-                    background: "var(--bg)",
-                  }}
-                  title={`${img.filename} (${img.status}) — doble click para quitar`}
-                >
-                  <img src={img.previewUrl} alt={img.filename} className="aspect-square w-full object-cover" />
-                  <div
-                    className="truncate px-1 py-0.5 text-[10px]"
-                    style={{ background: "var(--surface-raised)", color: "var(--text-secondary)" }}
-                  >
-                    {img.filename}
-                  </div>
-                </button>
-              ))}
+          {images.length === 0 && (
+            <button
+              type="button"
+              onClick={openFilePicker}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dashed text-lg"
+              style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--surface)" }}
+              aria-label="Agregar imagen"
+              title="Agregar imagen"
+            >
+              +
+            </button>
+          )}
+          {images.map((img) => (
+            <div key={img.localId} className="group relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedId(img.localId)}
+                className="h-10 w-10 overflow-hidden rounded-md"
+                style={{
+                  border: `2px solid ${selectedId === img.localId ? "var(--accent)" : STATUS_BORDER[img.status]}`,
+                  background: "var(--bg)",
+                }}
+                title={`${img.filename} (${img.status})`}
+                aria-label={`Seleccionar ${img.filename}`}
+                aria-pressed={selectedId === img.localId}
+              >
+                {img.previewUrl ? (
+                  <img src={img.previewUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full items-center justify-center text-[9px]" style={{ color: "var(--text-secondary)" }}>
+                    …
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeOne(img.localId)}
+                className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full text-[10px] leading-none group-hover:flex group-focus-within:flex"
+                style={{ background: "var(--error)", color: "#fff" }}
+                aria-label={`Quitar ${img.filename}`}
+                title="Quitar"
+              >
+                ×
+              </button>
             </div>
-          </div>
+          ))}
+        </aside>
 
-          <div className="flex min-h-0 flex-1 flex-col border-t" style={{ borderColor: "var(--border)" }}>
-            <div className="space-y-2 p-3">
-              <div className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
-                Palabras detectadas
+        {/* Paneles gemelos */}
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-2">
+          {/* Input Image */}
+          <section
+            className="twin-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border-2"
+            style={{
+              borderColor: dragOver && !selected ? "var(--accent)" : "var(--border)",
+              background: "var(--surface)",
+            }}
+            {...(!selected ? dropHandlers : {})}
+          >
+            <div
+              className="flex h-9 shrink-0 items-center justify-center border-b px-3 text-xs font-medium"
+              style={{ borderColor: "var(--border)" }}
+            >
+              Input Image
+            </div>
+            <div
+              className={`flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 ${!selected ? "cursor-pointer drop-target" : ""}`}
+              style={!selected ? emptyDropStyle : undefined}
+              onClick={!selected ? openFilePicker : undefined}
+              onKeyDown={
+                !selected
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openFilePicker();
+                      }
+                    }
+                  : undefined
+              }
+              role={!selected ? "button" : undefined}
+              tabIndex={!selected ? 0 : undefined}
+              aria-label={!selected ? "Subir una imagen" : undefined}
+            >
+              {selected ? (
+                <div
+                  ref={imgWrapRef}
+                  className="relative inline-block origin-center"
+                  style={{ transform: `scale(${zoom})` }}
+                >
+                  <img
+                    src={selected.previewUrl}
+                    alt={selected.filename}
+                    className="max-h-[min(60vh,520px)] max-w-full"
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+                      setDisplaySize({ w: img.clientWidth, h: img.clientHeight });
+                    }}
+                  />
+                  {viewMode === "boxes" && selected.result && (
+                    <svg
+                      className="absolute left-0 top-0"
+                      width={displaySize.w}
+                      height={displaySize.h}
+                      style={{ pointerEvents: "auto" }}
+                    >
+                      {selected.result.regions.map((r, i) => {
+                        const color = PALETTE[i % PALETTE.length];
+                        const active = hoveredRegion === r.id;
+                        const hasPoly = Array.isArray(r.poly) && r.poly.length >= 3;
+                        return (
+                          <g
+                            key={r.id}
+                            onMouseEnter={() => setHoveredRegion(r.id)}
+                            onMouseLeave={() => setHoveredRegion(null)}
+                            onClick={() => scrollToRegion(r.id)}
+                            onFocus={() => setHoveredRegion(r.id)}
+                            onBlur={() => setHoveredRegion(null)}
+                            tabIndex={0}
+                            role="button"
+                            aria-label={`Región ${r.id}: ${r.text}`}
+                            style={{ cursor: "pointer", outline: "none" }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                scrollToRegion(r.id);
+                              }
+                            }}
+                          >
+                            {hasPoly ? (
+                              <polygon
+                                points={polyPointsAttr(r.poly!, scaleX, scaleY)}
+                                stroke={color}
+                                strokeWidth={active ? 3 : 2}
+                                fill={color}
+                                fillOpacity={active ? 0.18 : 0.06}
+                              />
+                            ) : (
+                              <rect
+                                x={r.bbox.x * scaleX}
+                                y={r.bbox.y * scaleY}
+                                width={r.bbox.width * scaleX}
+                                height={r.bbox.height * scaleY}
+                                stroke={color}
+                                strokeWidth={active ? 3 : 2}
+                                fill={color}
+                                fillOpacity={active ? 0.18 : 0.06}
+                                rx={3}
+                              />
+                            )}
+                            <text
+                              x={r.bbox.x * scaleX}
+                              y={r.bbox.y * scaleY - 4}
+                              fill={color}
+                              fontSize={11}
+                              fontWeight={600}
+                            >
+                              #{r.id} · {(r.confidence * 100).toFixed(0)}%
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  )}
+                  {selected.status === "processing" && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center text-sm"
+                      style={{ background: "color-mix(in srgb, var(--bg) 70%, transparent)" }}
+                    >
+                      Procesando…
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+                  <div className="mb-1 text-2xl opacity-50" aria-hidden>
+                    ▢
+                  </div>
+                  Subí una imagen para comenzar
+                  <div className="mt-1 text-[10px] opacity-70">Arrastrá, pegá (Ctrl+V) o hacé click</div>
+                </div>
+              )}
+            </div>
+            <div
+              className="flex flex-wrap items-center gap-1 border-t px-2 py-1.5"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} aria-label="Alejar">
+                −
+              </button>
+              <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom(1)}>
+                {Math.round(zoom * 100)}%
+              </button>
+              <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom((z) => Math.min(3, z + 0.25))} aria-label="Acercar">
+                +
+              </button>
+              <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom(1)}>
+                Fit
+              </button>
+              <div className="ml-1 flex gap-1">
+                <button
+                  type="button"
+                  className="rounded px-2 py-1 text-xs"
+                  style={{ ...btnStyle, outline: viewMode === "original" ? "1px solid var(--accent)" : undefined }}
+                  onClick={() => setViewMode("original")}
+                >
+                  Original
+                </button>
+                <button
+                  type="button"
+                  className="rounded px-2 py-1 text-xs"
+                  style={{ ...btnStyle, outline: viewMode === "boxes" ? "1px solid var(--accent)" : undefined }}
+                  onClick={() => setViewMode("boxes")}
+                >
+                  BB
+                </button>
               </div>
+            </div>
+          </section>
+
+          {/* Result Text */}
+          <section
+            className="twin-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border-2"
+            style={{
+              borderColor: dragOver && !selected ? "var(--accent)" : "var(--border)",
+              background: "var(--surface)",
+            }}
+            {...(!selected ? dropHandlers : {})}
+          >
+            <div
+              className="flex h-9 shrink-0 items-center justify-between border-b px-3"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <span className="flex-1 text-center text-xs font-medium">Result Text</span>
+              <button
+                type="button"
+                disabled={!cleanText}
+                onClick={copyCleanText}
+                className="rounded-md px-2 py-1 text-xs disabled:opacity-40"
+                style={btnStyle}
+              >
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+            <div
+              className={`flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 ${!selected ? "cursor-pointer drop-target" : ""}`}
+              style={!selected ? emptyDropStyle : undefined}
+              onClick={!selected ? openFilePicker : undefined}
+              onKeyDown={
+                !selected
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openFilePicker();
+                      }
+                    }
+                  : undefined
+              }
+              role={!selected ? "button" : undefined}
+              tabIndex={!selected ? 0 : undefined}
+              aria-label={!selected ? "Subir una imagen" : undefined}
+            >
+              {!selected ? (
+                <div className="text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+                  <div className="mb-1 text-2xl opacity-50" aria-hidden>
+                    Aa
+                  </div>
+                  Subí una imagen para comenzar
+                  <div className="mt-1 text-[10px] opacity-70">Arrastrá, pegá (Ctrl+V) o hacé click</div>
+                </div>
+              ) : !selected.result ? (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {selected.status === "error"
+                    ? selected.error || "Error en inferencia"
+                    : "Sin resultados aún. Ejecutá Run."}
+                </p>
+              ) : (
+                <svg
+                  viewBox={`0 0 ${resultLayout.canvasW} ${resultLayout.canvasH}`}
+                  className="max-h-full w-full border bg-white shadow-sm"
+                  style={{ borderColor: "var(--border)" }}
+                  role="img"
+                  aria-label="ResultText"
+                >
+                  {resultLayout.regions.map((r, i) => {
+                    const color = PALETTE[i % PALETTE.length];
+                    const active = hoveredRegion === r.id;
+                    const naturalWidth = textWidthPerEm(r.text);
+                    const fontSize = Math.max(
+                      Math.min(
+                        r.textHeight * 0.85,
+                        naturalWidth > 0 ? r.textWidth / naturalWidth : r.textHeight * 0.85,
+                      ),
+                      1,
+                    );
+                    const labelSize = Math.max(Math.min(r.textHeight * 0.35, 14), 8);
+                    return (
+                      <g
+                        key={r.id}
+                        onMouseEnter={() => setHoveredRegion(r.id)}
+                        onMouseLeave={() => setHoveredRegion(null)}
+                        onClick={() => scrollToRegion(r.id)}
+                        onFocus={() => setHoveredRegion(r.id)}
+                        onBlur={() => setHoveredRegion(null)}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Región ${r.id}: ${r.text}`}
+                        style={{ cursor: "pointer", outline: "none" }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            scrollToRegion(r.id);
+                          }
+                        }}
+                      >
+                        <polygon
+                          points={polyPointsAttr(r.poly, 1, 1)}
+                          fill={active ? `${color}18` : "none"}
+                          stroke={color}
+                          strokeWidth={active ? 2.5 : 1.5}
+                        />
+                        <text
+                          x={0}
+                          y={0}
+                          fill="#111827"
+                          fontSize={fontSize}
+                          fontFamily="system-ui, sans-serif"
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          transform={`translate(${r.cx} ${r.cy}) rotate(${r.angleDeg})`}
+                        >
+                          {r.text}
+                        </text>
+                        <text
+                          x={r.labelX}
+                          y={Math.max(r.labelY - 2, labelSize)}
+                          fill={confColor(r.confidence, ocrOptions.conf_threshold)}
+                          fontSize={labelSize}
+                          fontWeight={600}
+                          textAnchor="end"
+                          fontFamily="system-ui, sans-serif"
+                        >
+                          {(r.confidence * 100).toFixed(0)}%
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+            </div>
+            <div
+              className="flex h-[37px] shrink-0 items-center border-t px-2 py-1.5 text-[10px]"
+              style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+            >
+              Texto espacial SVG
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Palabras detectadas — bandeja inferior colapsable */}
+      <section
+        className="shrink-0 border-t"
+        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        aria-label="Palabras detectadas"
+      >
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-xs font-medium"
+            style={{ color: "var(--text)" }}
+            aria-expanded={wordsOpen}
+            aria-controls="words-panel"
+            onClick={() => setWordsOpen((o) => !o)}
+          >
+            <IconChevron open={wordsOpen} />
+            Palabras detectadas
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px] font-normal"
+              style={{ background: "var(--surface-raised)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            >
+              {filteredRegions.length}
+              {selected?.result && filteredRegions.length !== selected.result.regions.length
+                ? ` / ${selected.result.regions.length}`
+                : ""}
+            </span>
+          </button>
+          {wordsOpen && (
+            <>
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar palabra…"
-                className="w-full rounded-md px-2 py-1.5 text-xs outline-none"
+                placeholder="Buscar…"
+                aria-label="Buscar palabra"
+                className="min-w-[120px] flex-1 rounded-md px-2 py-1 text-xs outline-none"
                 style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
               />
-              <div className="flex gap-1">
-                {([
-                  ["all", "Todas"],
-                  ["low", "Baja conf."],
-                  ["numbers", "Números"],
-                ] as const).map(([key, label]) => (
+              <div className="flex gap-1" role="group" aria-label="Filtros">
+                {(
+                  [
+                    ["all", "Todas"],
+                    ["low", "Baja conf."],
+                    ["numbers", "Números"],
+                  ] as const
+                ).map(([key, label]) => (
                   <button
                     key={key}
                     type="button"
@@ -1022,335 +1231,82 @@ export default function App() {
                       ...btnStyle,
                       outline: filter === key ? "1px solid var(--accent)" : undefined,
                     }}
+                    aria-pressed={filter === key}
                   >
                     {label}
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
-              {!selected?.result && (
-                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                  {selected?.status === "error"
-                    ? selected.error || "Error en inferencia"
-                    : "Sin resultados aún. Ejecutá Run."}
-                </p>
-              )}
-              {filteredRegions.map((r) => {
-                const color = PALETTE[r.id % PALETTE.length];
-                const active = hoveredRegion === r.id;
-                return (
-                  <div
-                    key={r.id}
-                    ref={(el) => {
-                      regionRefs.current[r.id] = el;
-                    }}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5"
-                    style={{
-                      background: active ? "var(--surface-raised)" : "transparent",
-                      border: `1px solid ${active ? color : "transparent"}`,
-                    }}
-                    onMouseEnter={() => setHoveredRegion(r.id)}
-                    onMouseLeave={() => setHoveredRegion(null)}
-                    onClick={() => scrollToRegion(r.id)}
-                  >
-                    <span className="w-7 shrink-0 text-[10px]" style={{ color }}>#{r.id}</span>
-                    <input
-                      value={r.text}
-                      onChange={(e) => updateRegionText(r.id, e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="min-w-0 flex-1 bg-transparent text-xs outline-none"
-                      style={{ color: "var(--text)" }}
-                    />
-                    <span
-                      className="shrink-0 text-[10px]"
-                      style={{ color: confColor(r.confidence, ocrOptions.conf_threshold) }}
-                    >
-                      {(r.confidence * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex gap-2 border-t p-3" style={{ borderColor: "var(--border)" }}>
-            <button
-              type="button"
-              disabled={busy || !selected}
-              onClick={runSelected}
-              className="flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-              style={{ background: "var(--accent)" }}
-            >
-              Run
-            </button>
-            <button
-              type="button"
-              disabled={busy || !images.some((i) => i.status === "pending" || i.status === "error")}
-              onClick={runAll}
-              className="flex-1 rounded-md px-2 py-1.5 text-xs font-medium disabled:opacity-40"
-              style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}
-            >
-              Run All
-            </button>
-            <button
-              type="button"
-              onClick={clearAll}
-              className="rounded-md px-2 py-1.5 text-xs disabled:opacity-40"
-              style={{ background: "var(--surface-raised)", border: "1px solid var(--border)", color: "var(--error)" }}
-            >
-              Clear
-            </button>
-          </div>
-        </aside>
-
-        {/* Viewer */}
-        <main className="flex min-h-0 flex-col" style={{ background: "var(--bg)" }}>
+            </>
+          )}
+        </div>
+        {wordsOpen && (
           <div
-            className="flex h-12 shrink-0 items-center justify-center border-b text-sm font-semibold"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-          >
-            Input Image
-          </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-            {selected ? (
-              <div
-                ref={imgWrapRef}
-                className="relative inline-block origin-center"
-                style={{ transform: `scale(${zoom})` }}
-              >
-                <img
-                  src={selected.previewUrl}
-                  alt={selected.filename}
-                  className="max-h-[70vh] max-w-full"
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
-                    setDisplaySize({ w: img.clientWidth, h: img.clientHeight });
-                  }}
-                />
-                {viewMode === "boxes" && selected.result && (
-                  <svg
-                    className="absolute left-0 top-0"
-                    width={displaySize.w}
-                    height={displaySize.h}
-                    style={{ pointerEvents: "auto" }}
-                  >
-                    {selected.result.regions.map((r, i) => {
-                      const color = PALETTE[i % PALETTE.length];
-                      const active = hoveredRegion === r.id;
-                      const hasPoly = Array.isArray(r.poly) && r.poly.length >= 3;
-                      return (
-                        <g
-                          key={r.id}
-                          onMouseEnter={() => setHoveredRegion(r.id)}
-                          onMouseLeave={() => setHoveredRegion(null)}
-                          onClick={() => scrollToRegion(r.id)}
-                          style={{ cursor: "pointer" }}
-                        >
-                          {hasPoly ? (
-                            <polygon
-                              points={polyPointsAttr(r.poly!, scaleX, scaleY)}
-                              stroke={color}
-                              strokeWidth={active ? 3 : 2}
-                              fill={color}
-                              fillOpacity={active ? 0.18 : 0.06}
-                            />
-                          ) : (
-                            <rect
-                              x={r.bbox.x * scaleX}
-                              y={r.bbox.y * scaleY}
-                              width={r.bbox.width * scaleX}
-                              height={r.bbox.height * scaleY}
-                              stroke={color}
-                              strokeWidth={active ? 3 : 2}
-                              fill={color}
-                              fillOpacity={active ? 0.18 : 0.06}
-                              rx={3}
-                            />
-                          )}
-                          <text
-                            x={r.bbox.x * scaleX}
-                            y={r.bbox.y * scaleY - 4}
-                            fill={color}
-                            fontSize={11}
-                            fontWeight={600}
-                          >
-                            #{r.id} · {(r.confidence * 100).toFixed(0)}%
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-                )}
-                {selected.status === "processing" && (
-                  <div
-                    className="absolute inset-0 flex items-center justify-center text-sm"
-                    style={{ background: "color-mix(in srgb, var(--bg) 70%, transparent)" }}
-                  >
-                    Procesando…
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Subí una imagen para comenzar
-              </p>
-            )}
-          </div>
-
-          <div
-            className="flex flex-wrap items-center gap-2 border-t px-3 py-2"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-          >
-            <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}>
-              −
-            </button>
-            <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom(1)}>
-              {Math.round(zoom * 100)}%
-            </button>
-            <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
-              +
-            </button>
-            <button type="button" className="rounded px-2 py-1 text-xs" style={btnStyle} onClick={() => setZoom(1)}>
-              Fit
-            </button>
-            <div className="ml-2 flex gap-1">
-              <button
-                type="button"
-                className="rounded px-2 py-1 text-xs"
-                style={{ ...btnStyle, outline: viewMode === "original" ? "1px solid var(--accent)" : undefined }}
-                onClick={() => setViewMode("original")}
-              >
-                Original
-              </button>
-              <button
-                type="button"
-                className="rounded px-2 py-1 text-xs"
-                style={{ ...btnStyle, outline: viewMode === "boxes" ? "1px solid var(--accent)" : undefined }}
-                onClick={() => setViewMode("boxes")}
-              >
-                BB
-              </button>
-            </div>
-          </div>
-        </main>
-
-        {/* Results */}
-        <aside
-          className="flex min-h-0 flex-col border-l"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-        >
-          <div
-            className="flex h-12 shrink-0 items-center justify-between border-b px-3"
+            id="words-panel"
+            className="flex max-h-36 flex-wrap gap-1.5 overflow-y-auto border-t px-3 py-2"
             style={{ borderColor: "var(--border)" }}
           >
-            <div className="flex-1 text-center text-sm font-semibold">Result Text</div>
-            <button
-              type="button"
-              disabled={!cleanText}
-              onClick={copyCleanText}
-              className="rounded-md px-2.5 py-1.5 text-xs disabled:opacity-40"
-              style={btnStyle}
-            >
-              {copied ? "Copiado" : "Copiar"}
-            </button>
-          </div>
-
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-            {!selected?.result ? (
+            {!selected?.result && (
               <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                 {selected?.status === "error"
                   ? selected.error || "Error en inferencia"
                   : "Sin resultados aún. Ejecutá Run."}
               </p>
-            ) : (
-              <svg
-                viewBox={`0 0 ${resultLayout.canvasW} ${resultLayout.canvasH}`}
-                className="max-h-full w-full border bg-white shadow-sm"
-                style={{ borderColor: "var(--border)" }}
-                role="img"
-                aria-label="ResultText"
-              >
-                {resultLayout.regions.map((r, i) => {
-                  const color = PALETTE[i % PALETTE.length];
-                  const active = hoveredRegion === r.id;
-                  const naturalWidth = textWidthPerEm(r.text);
-                  const fontSize = Math.max(
-                    Math.min(
-                      r.textHeight * 0.85,
-                      naturalWidth > 0 ? r.textWidth / naturalWidth : r.textHeight * 0.85,
-                    ),
-                    1,
-                  );
-                  const labelSize = Math.max(Math.min(r.textHeight * 0.35, 14), 8);
-                  return (
-                    <g
-                      key={r.id}
-                      onMouseEnter={() => setHoveredRegion(r.id)}
-                      onMouseLeave={() => setHoveredRegion(null)}
-                      onClick={() => scrollToRegion(r.id)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <polygon
-                        points={polyPointsAttr(r.poly, 1, 1)}
-                        fill={active ? `${color}18` : "none"}
-                        stroke={color}
-                        strokeWidth={active ? 2.5 : 1.5}
-                      />
-                      <text
-                        x={0}
-                        y={0}
-                        fill="#111827"
-                        fontSize={fontSize}
-                        fontFamily="system-ui, sans-serif"
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        transform={`translate(${r.cx} ${r.cy}) rotate(${r.angleDeg})`}
-                      >
-                        {r.text}
-                      </text>
-                      <text
-                        x={r.labelX}
-                        y={Math.max(r.labelY - 2, labelSize)}
-                        fill={confColor(r.confidence, ocrOptions.conf_threshold)}
-                        fontSize={labelSize}
-                        fontWeight={600}
-                        textAnchor="end"
-                        fontFamily="system-ui, sans-serif"
-                      >
-                        {(r.confidence * 100).toFixed(0)}%
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
             )}
+            {selected?.result && filteredRegions.length === 0 && (
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                Ninguna región coincide con el filtro.
+              </p>
+            )}
+            {filteredRegions.map((r) => {
+              const color = PALETTE[r.id % PALETTE.length];
+              const active = hoveredRegion === r.id;
+              return (
+                <div
+                  key={r.id}
+                  ref={(el) => {
+                    regionRefs.current[r.id] = el;
+                  }}
+                  className="flex max-w-xs items-center gap-1.5 rounded-md px-2 py-1"
+                  style={{
+                    background: active ? "var(--surface-raised)" : "var(--bg)",
+                    border: `1px solid ${active ? color : "var(--border)"}`,
+                  }}
+                  onMouseEnter={() => setHoveredRegion(r.id)}
+                  onMouseLeave={() => setHoveredRegion(null)}
+                  onFocus={() => setHoveredRegion(r.id)}
+                  onBlur={() => setHoveredRegion(null)}
+                  onClick={() => scrollToRegion(r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") scrollToRegion(r.id);
+                  }}
+                  tabIndex={0}
+                  role="listitem"
+                  aria-label={`Palabra ${r.id}`}
+                >
+                  <span className="shrink-0 text-[10px]" style={{ color }}>
+                    #{r.id}
+                  </span>
+                  <input
+                    value={r.text}
+                    onChange={(e) => updateRegionText(r.id, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Texto región ${r.id}`}
+                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    style={{ color: "var(--text)" }}
+                  />
+                  <span
+                    className="shrink-0 text-[10px]"
+                    style={{ color: confColor(r.confidence, ocrOptions.conf_threshold) }}
+                  >
+                    {(r.confidence * 100).toFixed(0)}%
+                  </span>
+                </div>
+              );
+            })}
           </div>
-
-          <div className="border-t p-3" style={{ borderColor: "var(--border)" }}>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
-              Métricas
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Metric
-                value={selected?.result ? `${(selected.result.confidence_avg * 100).toFixed(1)}%` : "—"}
-                label="Confianza avg"
-              />
-              <Metric
-                value={selected?.result ? `${(selected.result.inference_time_ms / 1000).toFixed(2)}s` : "—"}
-                label="Tiempo"
-              />
-              <Metric value={selected?.result ? String(selected.result.regions_count) : "—"} label="Regiones" />
-              <Metric
-                value={selected?.result ? String(selected.result.low_confidence_count) : "—"}
-                label="Baja conf."
-              />
-            </div>
-          </div>
-        </aside>
-      </div>
+        )}
+      </section>
 
       {/* Status bar */}
       <footer
@@ -1380,13 +1336,36 @@ const btnStyle: CSSProperties = {
   color: "var(--text)",
 };
 
+function IconChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+      style={{
+        transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+        transition: "transform 150ms ease",
+      }}
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 function Metric({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-lg p-2.5" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-      <div className="text-lg font-medium leading-tight">{value}</div>
+    <div
+      className="rounded-md px-2 py-1.5"
+      style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}
+    >
       <div className="text-[10px]" style={{ color: "var(--text-secondary)" }}>
         {label}
       </div>
+      <div className="text-sm font-medium leading-tight">{value}</div>
     </div>
   );
 }

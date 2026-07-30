@@ -7,7 +7,7 @@ export type InferOptions = {
   mode: OcrMode;
   tier: OcrTier;
   conf_threshold: number;
-  /** Solo si se setean; ausentes → default interno de Paddle */
+  /** Defaults recall-first; el backend también los aplica si faltan */
   text_det_box_thresh?: number;
   text_det_thresh?: number;
   text_det_unclip_ratio?: number;
@@ -57,14 +57,13 @@ export const DEFAULT_INFER_OPTIONS: InferOptions = {
   mode: "fast",
   tier: "medium",
   conf_threshold: 0.9,
-};
-
-/** Defaults oficiales PaddleOCR 3.x (solo UI; no se envían hasta que el usuario los fija). */
-export const OFFICIAL_DET_DEFAULTS = {
-  text_det_thresh: 0.3,
-  text_det_box_thresh: 0.6,
+  // Defaults recall-first (alineados al backend)
+  text_det_thresh: 0.2,
+  text_det_box_thresh: 0.35,
   text_det_unclip_ratio: 2.0,
-} as const;
+  text_det_limit_side_len: 1152,
+  text_det_limit_type: "min",
+};
 
 export const imageUrl = (imageId: string) => `${API}/image/${imageId}`;
 

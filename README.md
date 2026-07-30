@@ -39,25 +39,33 @@ PDF no está soportado.
 
 ## Opciones OCR
 
-En el header (nombres alineados a PaddleOCR 3.x):
+En el header:
 
 | Control | Valores | Efecto |
 |---------|---------|--------|
-| Modo | Rápido / Documento | Documento activa `use_doc_orientation_classify`; `use_textline_orientation` siempre on |
-| Tier | tiny / small / medium | Velocidad vs precisión (PP-OCRv6 unificado, ~50 idiomas) |
-| Conf | 50–95% | `text_rec_score_thresh` en `predict()` + métrica de baja confianza |
-| Det thresh | auto / 0.1–0.9 | `text_det_thresh` (default motor 0.3) |
-| Box thresh | auto / 0.1–0.9 | `text_det_box_thresh` (default motor 0.6) |
-| Unclip | auto / 1.0–3.0 | `text_det_unclip_ratio` (default motor ~2.0) |
+| Tier | tiny / small / medium | Velocidad vs precisión (PP-OCRv6 unificado, ~50 idiomas). **Único control de usuario.** |
 
-Las opciones se guardan en `localStorage`. Cambiarlas no reprocesa solo: hay que volver a **Run**. “Auto” omite el parámetro y Paddle usa su default interno.
+El resto son defaults de producto orientados a **máximo recall**:
+
+| Parámetro | Default | Rol |
+|-----------|---------|-----|
+| `mode` | `fast` | Sin orientación de página ni unwarping |
+| `conf_threshold` | `0.9` | Solo métricas/colores en UI (`low_confidence_count`); **no** corta el motor |
+| `text_det_thresh` | `0.20` | Más regiones candidatas |
+| `text_det_box_thresh` | `0.35` | Acepta cajas más débiles |
+| `text_det_unclip_ratio` | `2.0` | Expande cajas (default oficial) |
+| `text_det_limit_side_len` | `1152` | Detalle en tipografía chica |
+| `text_det_limit_type` | `min` | Upscale si el lado menor &lt; 1152 |
+| `use_textline_orientation` | on | Texto vertical / rotado por línea |
+
+No se envía `text_rec_score_thresh` (default Paddle `0.0` = sin filtro). El parser emite una región por cada `dt_polys`. El tier se guarda en `localStorage`; cambiarlo no reprocesa solo: hay que volver a **Run**.
 
 ## Uso
 
 1. Arrastrar imágenes a la galería, elegir archivos, o pegar desde el portapapeles (Ctrl+V)
-2. Elegir modo / tier / umbrales
+2. Elegir tier (tiny / small / medium)
 3. Click **Run** o **Run All**
-4. Revisar polígonos en el visor y editar texto a la derecha
+4. Revisar polígonos en el visor y editar texto
 5. Exportar JSON / CSV / TXT (texto editado; JSON incluye `poly`) o **PNG anotado** (`save_to_img` del motor)
 
 ## Stack

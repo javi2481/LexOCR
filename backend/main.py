@@ -121,25 +121,24 @@ def _refresh_device_info() -> dict[str, Any]:
 class InferOptions(BaseModel):
     mode: OcrMode = "fast"
     tier: OcrTier = "medium"
+    # Solo UI/métricas (low_confidence_count, colores). No corta el motor.
     conf_threshold: float = Field(default=0.9, ge=0.5, le=0.99)
-    # Overrides opcionales: None = default interno de Paddle (no hardcodear aquí)
-    text_det_box_thresh: float | None = None
-    text_det_thresh: float | None = None
-    text_det_unclip_ratio: float | None = None
-    text_det_limit_side_len: int | None = None
-    text_det_limit_type: str | None = None
+    # Defaults recall-first (scene/display). None omite el param → default Paddle.
+    text_det_box_thresh: float | None = 0.35
+    text_det_thresh: float | None = 0.20
+    text_det_unclip_ratio: float | None = 2.0
+    text_det_limit_side_len: int | None = 1152
+    text_det_limit_type: str | None = "min"
 
 
 def _predict_kwargs(options: InferOptions) -> dict[str, Any]:
-    """Kwargs oficiales para predict(); omitidos → default interno de Paddle."""
+    """Kwargs oficiales para predict(). No envía text_rec_score_thresh (default Paddle 0.0)."""
     mapping: dict[str, Any] = {
         "text_det_box_thresh": options.text_det_box_thresh,
         "text_det_thresh": options.text_det_thresh,
         "text_det_unclip_ratio": options.text_det_unclip_ratio,
         "text_det_limit_side_len": options.text_det_limit_side_len,
         "text_det_limit_type": options.text_det_limit_type,
-        # Capa producto: conf_threshold → text_rec_score_thresh oficial
-        "text_rec_score_thresh": options.conf_threshold,
     }
     return {k: v for k, v in mapping.items() if v is not None}
 
@@ -311,17 +310,30 @@ def _normalize_poly(poly: Any) -> list[list[float]]:
 
 
 def _call_predict(engine: Any, path: str, options: InferOptions | None) -> Any:
-    """Invoca predict() con kwargs oficiales; fallback a ocr() legacy."""
+    """Invoca predict() con kwargs oficiales; drop progresivo si la API rechaza alguno."""
     pred_kwargs = _predict_kwargs(options) if options is not None else {}
+    drop_order = (
+        "text_det_limit_type",
+        "text_det_limit_side_len",
+        "text_det_unclip_ratio",
+        "text_det_box_thresh",
+        "text_det_thresh",
+    )
     if hasattr(engine, "predict"):
-        try:
-            return engine.predict(path, **pred_kwargs) if pred_kwargs else engine.predict(path)
-        except TypeError:
-            # API no acepta alguno de los kwargs → reintentar sin ellos
+        attempt = dict(pred_kwargs)
+        while True:
             try:
-                return engine.predict(path)
+                return engine.predict(path, **attempt) if attempt else engine.predict(path)
             except TypeError:
-                pass
+                dropped = False
+                for name in drop_order:
+                    if name in attempt:
+                        print(f"[predict] dropping unsupported kwarg: {name}")
+                        attempt.pop(name)
+                        dropped = True
+                        break
+                if not dropped:
+                    break
     try:
         return engine.ocr(path, cls=True)
     except TypeError:
@@ -329,7 +341,11 @@ def _call_predict(engine: Any, path: str, options: InferOptions | None) -> Any:
 
 
 def _parse_paddle_raw(raw: Any) -> list[tuple[list, tuple[str, float]]]:
-    """Normalize PaddleOCR output to [(polygon, (text, conf)), ...]."""
+    """Normalize PaddleOCR output to [(polygon, (text, conf)), ...].
+
+    Prefer dt_polys as master list so every detection becomes a region,
+    even when recognition is empty or missing.
+    """
     lines: list[tuple[list, tuple[str, float]]] = []
     if not raw:
         return lines
@@ -340,15 +356,29 @@ def _parse_paddle_raw(raw: Any) -> list[tuple[list, tuple[str, float]]]:
             continue
         data = _page_to_dict(page)
 
-        if "rec_texts" in data or "rec_scores" in data:
-            texts = list(data.get("rec_texts") or [])
-            scores = list(data.get("rec_scores") or [])
-            polys = data.get("rec_polys") or data.get("dt_polys") or []
-            boxes = data.get("rec_boxes")
-            for i, text in enumerate(texts):
-                conf = float(scores[i]) if i < len(scores) else 0.0
-                if i < len(polys):
-                    box = polys[i]
+        dt_polys = data.get("dt_polys")
+        rec_polys = data.get("rec_polys")
+        texts = list(data.get("rec_texts") or [])
+        scores = list(data.get("rec_scores") or [])
+        boxes = data.get("rec_boxes")
+
+        if dt_polys is not None or rec_polys is not None or texts or scores:
+            if hasattr(dt_polys, "tolist"):
+                dt_polys = dt_polys.tolist()
+            if hasattr(rec_polys, "tolist"):
+                rec_polys = rec_polys.tolist()
+
+            if dt_polys is not None:
+                master = list(dt_polys)
+            elif rec_polys is not None:
+                master = list(rec_polys)
+            else:
+                master = []
+
+            n = len(master) if master else len(texts)
+            for i in range(n):
+                if i < len(master):
+                    box = master[i]
                     if hasattr(box, "tolist"):
                         box = box.tolist()
                 elif boxes is not None and i < len(boxes):
@@ -358,7 +388,9 @@ def _parse_paddle_raw(raw: Any) -> list[tuple[list, tuple[str, float]]]:
                     box = [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]]
                 else:
                     box = [[0, 0], [0, 0], [0, 0], [0, 0]]
-                lines.append((box, (str(text), conf)))
+                text = str(texts[i]) if i < len(texts) else ""
+                conf = float(scores[i]) if i < len(scores) else 0.0
+                lines.append((box, (text, conf)))
             continue
 
         if isinstance(page, (list, tuple)):
@@ -648,6 +680,26 @@ async def upload(file: UploadFile = File(...)):
     }
 
 
+@app.post("/infer/batch", response_model=list[OCRResult])
+def infer_batch(body: BatchRequest):
+    # Must be registered before /infer/{image_id} so "batch" is not captured as an id.
+    options = InferOptions(
+        mode=body.mode,
+        tier=body.tier,
+        conf_threshold=body.conf_threshold,
+        text_det_box_thresh=body.text_det_box_thresh,
+        text_det_thresh=body.text_det_thresh,
+        text_det_unclip_ratio=body.text_det_unclip_ratio,
+        text_det_limit_side_len=body.text_det_limit_side_len,
+        text_det_limit_type=body.text_det_limit_type,
+    )
+    results: list[OCRResult] = []
+    for iid in body.image_ids:
+        if iid in store and store[iid]["status"] in ("pending", "error", "completed"):
+            results.append(infer(iid, options))
+    return results
+
+
 @app.post("/infer/{image_id}", response_model=OCRResult)
 def infer(image_id: str, options: InferOptions = Body(default_factory=InferOptions)):
     if image_id not in store:
@@ -673,25 +725,6 @@ def infer(image_id: str, options: InferOptions = Body(default_factory=InferOptio
         item["status"] = "error"
         item["error"] = str(exc)
         raise HTTPException(500, f"Error OCR: {exc}") from exc
-
-
-@app.post("/infer/batch", response_model=list[OCRResult])
-def infer_batch(body: BatchRequest):
-    options = InferOptions(
-        mode=body.mode,
-        tier=body.tier,
-        conf_threshold=body.conf_threshold,
-        text_det_box_thresh=body.text_det_box_thresh,
-        text_det_thresh=body.text_det_thresh,
-        text_det_unclip_ratio=body.text_det_unclip_ratio,
-        text_det_limit_side_len=body.text_det_limit_side_len,
-        text_det_limit_type=body.text_det_limit_type,
-    )
-    results: list[OCRResult] = []
-    for iid in body.image_ids:
-        if iid in store and store[iid]["status"] in ("pending", "error", "completed"):
-            results.append(infer(iid, options))
-    return results
 
 
 @app.get("/status/{image_id}")

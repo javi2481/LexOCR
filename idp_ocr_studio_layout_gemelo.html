@@ -1,0 +1,56 @@
+<div style="display:flex; flex-direction:column; gap:8px; border:0.5px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-1);">
+  <h2 class="sr-only">Propuesta de layout: dos paneles iguales para imagen y resultado, con controles reubicados a barra superior, cinta de métricas y panel inferior de palabras.</h2>
+
+  <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:0.5px solid var(--border); border-radius:var(--radius); background:var(--surface-2);">
+    <span style="font-weight:500; font-size:13px;">IDP · Studio</span>
+    <span style="font-size:11px; color:var(--text-secondary); border:0.5px solid var(--border); border-radius:var(--radius); padding:2px 6px;">PP-OCRv6 · medium ▾</span>
+    <span style="flex:1;"></span>
+    <span style="font-size:11px; color:var(--text-accent); border:0.5px solid var(--border-accent); border-radius:var(--radius); padding:2px 8px;"><i class="ti ti-player-play" aria-hidden="true"></i> Run · Run all · Clear</span>
+    <span style="font-size:11px; color:var(--text-secondary);">JSON CSV TXT PNG</span>
+    <i class="ti ti-moon" aria-hidden="true" style="font-size:14px; color:var(--text-secondary);"></i>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;">
+    <div style="background:var(--surface-2); border-radius:var(--radius); padding:6px 8px;"><div style="font-size:11px; color:var(--text-muted);">Confianza avg</div><div style="font-size:14px; font-weight:500;">—</div></div>
+    <div style="background:var(--surface-2); border-radius:var(--radius); padding:6px 8px;"><div style="font-size:11px; color:var(--text-muted);">Tiempo</div><div style="font-size:14px; font-weight:500;">—</div></div>
+    <div style="background:var(--surface-2); border-radius:var(--radius); padding:6px 8px;"><div style="font-size:11px; color:var(--text-muted);">Regiones</div><div style="font-size:14px; font-weight:500;">—</div></div>
+    <div style="background:var(--surface-2); border-radius:var(--radius); padding:6px 8px;"><div style="font-size:11px; color:var(--text-muted);">Baja conf.</div><div style="font-size:14px; font-weight:500;">—</div></div>
+  </div>
+
+  <div style="display:flex; gap:8px;">
+    <div style="width:48px; display:flex; flex-direction:column; gap:6px; align-items:center; padding-top:4px;">
+      <div style="width:40px; height:40px; border:0.5px solid var(--border-accent); border-radius:6px; background:var(--bg-accent);"></div>
+      <div style="width:40px; height:40px; border:0.5px solid var(--border); border-radius:6px; background:var(--surface-2);"></div>
+      <div style="font-size:10px; color:var(--text-muted); text-align:center;">thumbs</div>
+    </div>
+
+    <div style="flex:1; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+      <div style="border:2px solid var(--border-accent); border-radius:var(--radius); min-height:170px; display:flex; flex-direction:column;">
+        <div style="font-size:12px; font-weight:500; padding:6px 8px; border-bottom:0.5px solid var(--border);">Input image</div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:11px;"><i class="ti ti-photo" aria-hidden="true" style="font-size:22px;"></i></div>
+        <div style="font-size:10px; color:var(--text-muted); padding:5px 8px; border-top:0.5px solid var(--border);">− 100% + · fit · original · BB</div>
+      </div>
+      <div style="border:2px solid var(--border-accent); border-radius:var(--radius); min-height:170px; display:flex; flex-direction:column;">
+        <div style="font-size:12px; font-weight:500; padding:6px 8px; border-bottom:0.5px solid var(--border); display:flex; justify-content:space-between;"><span>Result text</span><span style="color:var(--text-secondary);"><i class="ti ti-copy" aria-hidden="true"></i></span></div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:11px;"><i class="ti ti-text-recognition" aria-hidden="true" style="font-size:22px;"></i></div>
+        <div style="font-size:10px; color:var(--text-muted); padding:5px 8px; border-top:0.5px solid var(--border);">− 100% + · texto espacial SVG</div>
+      </div>
+    </div>
+  </div>
+  <div style="text-align:center; font-size:10px; color:var(--text-accent);">↑ gemelos: mismo ancho, mismo alto, headers espejados</div>
+
+  <div style="border:0.5px solid var(--border); border-radius:var(--radius); background:var(--surface-2);">
+    <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:0.5px solid var(--border);">
+      <span style="font-size:12px; font-weight:500;">Palabras detectadas</span>
+      <span style="font-size:11px; color:var(--text-muted); border:0.5px solid var(--border); border-radius:var(--radius); padding:2px 6px; flex:1;"><i class="ti ti-search" aria-hidden="true"></i> buscar…</span>
+      <span style="font-size:11px; color:var(--text-secondary);">todas · baja conf. · números</span>
+      <i class="ti ti-chevron-down" aria-hidden="true" style="font-size:14px; color:var(--text-muted);"></i>
+    </div>
+    <div style="display:flex; gap:6px; padding:6px 8px; font-size:10px; color:var(--text-muted); flex-wrap:wrap;">
+      <span style="border:0.5px solid var(--border); border-radius:var(--radius); padding:2px 8px;">RETRO · 74%</span>
+      <span style="border:0.5px solid var(--border); border-radius:var(--radius); padding:2px 8px;">PRODUCTS · 81%</span>
+      <span style="border:0.5px solid var(--border); border-radius:var(--radius); padding:2px 8px;">NEVER · 99%</span>
+      <span style="border:0.5px solid var(--border); border-radius:var(--radius); padding:2px 8px;">POSTER · 100%</span>
+    </div>
+  </div>
+</div>

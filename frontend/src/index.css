@@ -42,3 +42,37 @@ body {
 * {
   box-sizing: border-box;
 }
+
+button,
+[role="button"],
+a,
+select,
+input[type="file"] + * {
+  cursor: pointer;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.twin-panel {
+  min-height: 200px;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.drop-target {
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twin-panel,
+  .drop-target,
+  svg {
+    transition: none !important;
+  }
+}
