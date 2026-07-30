@@ -255,8 +255,6 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const [copied, setCopied] = useState(false);
   const [wordsOpen, setWordsOpen] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "low" | "numbers">("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regionRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const imgWrapRef = useRef<HTMLDivElement>(null);
@@ -533,16 +531,7 @@ export default function App() {
     });
   };
 
-  const filteredRegions: Region[] = useMemo(() => {
-    const regions = selected?.result?.regions ?? [];
-    const thr = ocrOptions.conf_threshold;
-    return regions.filter((r) => {
-      if (filter === "low" && r.confidence >= thr) return false;
-      if (filter === "numbers" && !/^\d/.test(r.text.trim())) return false;
-      if (search && !r.text.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
-  }, [selected?.result?.regions, filter, search, ocrOptions.conf_threshold]);
+  const trayRegions: Region[] = selected?.result?.regions ?? [];
 
   const orderedRegions: Region[] = useMemo(() => {
     const regions = selected?.result?.regions ?? [];
@@ -1198,47 +1187,9 @@ export default function App() {
               className="rounded px-1.5 py-0.5 text-[10px] font-normal"
               style={{ background: "var(--surface-raised)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
             >
-              {filteredRegions.length}
-              {selected?.result && filteredRegions.length !== selected.result.regions.length
-                ? ` / ${selected.result.regions.length}`
-                : ""}
+              {trayRegions.length}
             </span>
           </button>
-          {wordsOpen && (
-            <>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar…"
-                aria-label="Buscar palabra"
-                className="min-w-[120px] flex-1 rounded-md px-2 py-1 text-xs outline-none"
-                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
-              />
-              <div className="flex gap-1" role="group" aria-label="Filtros">
-                {(
-                  [
-                    ["all", "Todas"],
-                    ["low", "Baja conf."],
-                    ["numbers", "Números"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setFilter(key)}
-                    className="rounded px-2 py-1 text-[10px]"
-                    style={{
-                      ...btnStyle,
-                      outline: filter === key ? "1px solid var(--accent)" : undefined,
-                    }}
-                    aria-pressed={filter === key}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
         </div>
         {wordsOpen && (
           <div
@@ -1253,12 +1204,7 @@ export default function App() {
                   : "Sin resultados aún. Ejecutá Run."}
               </p>
             )}
-            {selected?.result && filteredRegions.length === 0 && (
-              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                Ninguna región coincide con el filtro.
-              </p>
-            )}
-            {filteredRegions.map((r) => {
+            {trayRegions.map((r) => {
               const color = PALETTE[r.id % PALETTE.length];
               const active = hoveredRegion === r.id;
               return (
