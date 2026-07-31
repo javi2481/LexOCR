@@ -1,6 +1,8 @@
-# IDP OCR Studio (MVP low-code)
+# IDP OCR Studio (MVP low-code) — v1
 
 SPA académica para OCR con **PP-OCRv6 medium**: subir imágenes, inferir, ver bounding boxes / ResultText espacial, editar texto y exportar (JSON / MD / CSV / TXT + PNG anotado).
+
+**v1 cerrada (2026-07-30).** La **v2** usará un **VLM** en lugar de seguir exprimiendo detección+reconocimiento clásico. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
 
 ## Mapa del repo
 
@@ -82,9 +84,20 @@ Con backend y frontend arriba, subí y corré **Run** (medium):
 
 También: `cd frontend && npm run build`.
 
-## Continuidad (no es runtime)
+## Continuidad (otra PC / Linux)
 
-- `engram-export.json` / `.engram/` — memorias entre PCs (`engram import` / `sync`).
+```bash
+git clone https://github.com/javi2481/idp-ocr-studio.git
+cd idp-ocr-studio
+git pull   # HEAD esperado: main al día con origin
+# Engram (opcional): engram import engram-export.json  — solo memorias de este proyecto
+cd backend && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cd ../frontend && npm install
+cd .. && ./scripts/dev.sh
+```
+
+- `engram-export.json` / `.engram/` — memorias **solo** de idp-ocr-studio (sin secretos de otros repos).
 - `.cursor/` — skills y agents del flujo de desarrollo.
 
 ## Stack

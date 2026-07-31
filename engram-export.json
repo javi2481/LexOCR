@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "exported_at": "2026-07-31T00:35:00Z",
+  "exported_at": "2026-07-31T01:40:00Z",
   "sessions": [
     {
       "id": "manual-save-idp-ocr-studio",
@@ -11,34 +11,49 @@
   ],
   "observations": [
     {
+      "id": 620,
+      "sync_id": "obs-idp-v1-freeze-v2-vlm",
+      "session_id": "manual-save-idp-ocr-studio",
+      "type": "decision",
+      "title": "IDP OCR Studio — v1 cerrada; v2 = VLM",
+      "content": "**What**: v1 freeze del pipeline PP-OCRv6 medium + rescate angular. No más Hough/tuneo fino de diagonales como camino principal. v2 usará VLM.\n**Why**: Techo del OCR clásico en nubes/diagonales; usuario cerró v1 explícitamente.\n**Where**: docs/PRODUCT.md, CHANGELOG.md, README.md. Repo: https://github.com/javi2481/idp-ocr-studio.git main.\n**Learned**: Smoke v1: poster TRY/WERE ±90; nubes confAvg ~0.94/0.89 y más orientation≠0. Detección = familia DB vía PP-OCRv6_*_det.",
+      "project": "idp-ocr-studio",
+      "scope": "project",
+      "revision_count": 1,
+      "duplicate_count": 1,
+      "last_seen_at": "2026-07-31 01:40:00",
+      "created_at": "2026-07-31 01:40:00",
+      "updated_at": "2026-07-31 01:40:00"
+    },
+    {
       "id": 606,
       "sync_id": "obs-idp-overview-higiene",
       "session_id": "manual-save-idp-ocr-studio",
       "type": "manual",
       "title": "IDP OCR Studio — overview post-higiene",
-      "content": "Academic low-code MVP: React 19 + Vite + Tailwind frontend; FastAPI + PaddleOCR PP-OCRv6.\nRepo: https://github.com/javi2481/idp-ocr-studio.git\nPhilosophy: orquestar API oficial PaddleOCR 3.x (no inventar motores); sin Docker/DB/colas/auth.\nStructure: backend/app/ (ocr, orientation, parsing, routes, schemas, storage) + shim backend/main.py; frontend/src/{components,lib,types}; docs/; tests/fixtures/images/; scripts/dev.ps1|sh.\nTier medium fijo. Rescue angular (_rescue_oriented_lines ±30/45/60/90/180). Export JSON/MD/CSV/TXT + PNG anotado.\nFormats: PNG JPG WEBP GIF BMP TIFF ICO PPM AVIF. PDF NO.\nRun: .\\scripts\\dev.ps1 o ./scripts/dev.sh → API :8100 UI :5173.\nSmoke: tests/fixtures/images/poster.avif → TRY=-90 WERE=+90.\nVer docs/PRODUCT.md y CHANGELOG.md.",
+      "content": "Academic low-code MVP v1: React 19 + Vite + Tailwind frontend; FastAPI + PaddleOCR PP-OCRv6.\nRepo: https://github.com/javi2481/idp-ocr-studio.git\nPhilosophy: orquestar API oficial PaddleOCR 3.x (no inventar motores); sin Docker/DB/colas/auth.\nStructure: backend/app/ (ocr, orientation, parsing, routes, schemas, storage) + shim backend/main.py; frontend/src/{components,hooks,lib,types}; docs/; tests/fixtures/images/; scripts/dev.ps1|sh.\nTier medium fijo. Rescue: minAreaRect + sweep ±7.5/15, margen diagonal 0.02. Export JSON/MD/CSV/TXT + PNG anotado.\nFormats: PNG JPG WEBP GIF BMP TIFF ICO PPM AVIF. PDF NO.\nRun: ./scripts/dev.sh → API :8100 UI :5173.\nSmoke: tests/fixtures/images/poster.avif → TRY=-90 WERE=+90.\nv1 CERRADA; v2 = VLM. Ver docs/PRODUCT.md y CHANGELOG.md.",
       "project": "idp-ocr-studio",
       "scope": "project",
-      "revision_count": 1,
+      "revision_count": 2,
       "duplicate_count": 1,
-      "last_seen_at": "2026-07-31 00:35:00",
+      "last_seen_at": "2026-07-31 01:40:00",
       "created_at": "2026-07-31 00:30:00",
-      "updated_at": "2026-07-31 00:35:00"
+      "updated_at": "2026-07-31 01:40:00"
     },
     {
       "id": 607,
       "sync_id": "obs-idp-continue-pc",
       "session_id": "manual-save-idp-ocr-studio",
       "type": "manual",
-      "title": "IDP OCR Studio — continue on another PC",
-      "content": "git clone https://github.com/javi2481/idp-ocr-studio.git\ncd idp-ocr-studio\nengram import engram-export.json\ncd backend && python -m venv .venv && .venv\\Scripts\\activate  # o source .venv/bin/activate\npip install -r requirements.txt\n# otra terminal:\ncd frontend && npm install\n# raíz:\n.\\scripts\\dev.ps1   # o ./scripts/dev.sh\n\nFixtures: tests/fixtures/images/ (poster.avif, etiqueta-2/3.jpeg, nube-manzana.png, nube-corazon.jpeg).\nAPI :8100, UI :5173. Primer arranque: warmup Paddle. Ver docs/PRODUCT.md y README.md.",
+      "title": "IDP OCR Studio — continue on Linux PC",
+      "content": "git clone https://github.com/javi2481/idp-ocr-studio.git\ncd idp-ocr-studio && git pull\n# HEAD v1 freeze: main (incl. App slim + rescue diagonal + docs v1/v2)\nengram import engram-export.json   # solo memorias idp-ocr-studio\ncd backend && python -m venv .venv && source .venv/bin/activate\npip install -r requirements.txt\ncd ../frontend && npm install\ncd .. && ./scripts/dev.sh\n\nFixtures: tests/fixtures/images/\nAPI :8100, UI :5173. Warmup Paddle en primer arranque.\nv1 cerrada; no seguir Hough. v2 = VLM.",
       "project": "idp-ocr-studio",
       "scope": "project",
-      "revision_count": 1,
+      "revision_count": 2,
       "duplicate_count": 1,
-      "last_seen_at": "2026-07-31 00:35:00",
+      "last_seen_at": "2026-07-31 01:40:00",
       "created_at": "2026-07-31 00:30:00",
-      "updated_at": "2026-07-31 00:35:00"
+      "updated_at": "2026-07-31 01:40:00"
     },
     {
       "id": 608,
@@ -46,14 +61,14 @@
       "session_id": "manual-save-idp-ocr-studio",
       "type": "decision",
       "title": "IDP OCR Studio — rescue angular + medium fijo",
-      "content": "**What**: _rescue_oriented_lines barre ±30/45/60, ±90, 180; Region.orientation float; UI tier medium fijo; use_textline_orientation≠diagonales.\n**Why**: Nubes/diagonales fallaban con solo 0/180 de textline orientation.\n**Where**: backend/app/ocr.py, backend/app/orientation.py, frontend components.\n**Learned**: E2E nubes ~115s; poster TRY conf 1.0 con segundo pase TextRecognition.",
+      "content": "**What**: _estimate_text_angle (minAreaRect) + SWEEP_DELTAS ±7.5/15; margen 0.02 diagonales; Region.orientation float; UI tier medium fijo.\n**Why**: Nubes/diagonales fallaban con solo 0/180 de textline orientation.\n**Where**: backend/app/orientation.py, backend/app/ocr.py, frontend hooks/components.\n**Learned**: E2E poster TRY/WERE ±90; nubes mejoraron orientation≠0. Techo clásico → v2 VLM.",
       "project": "idp-ocr-studio",
       "scope": "project",
-      "revision_count": 1,
+      "revision_count": 2,
       "duplicate_count": 1,
-      "last_seen_at": "2026-07-31 00:35:00",
+      "last_seen_at": "2026-07-31 01:40:00",
       "created_at": "2026-07-31 00:30:00",
-      "updated_at": "2026-07-31 00:35:00"
+      "updated_at": "2026-07-31 01:40:00"
     },
     {
       "id": 586,
@@ -61,14 +76,14 @@
       "session_id": "manual-save-idp-ocr-studio",
       "type": "decision",
       "title": "Cotejo PaddleOCR implementado P0-P2",
-      "content": "**What**: Backlog cotejo: .env.example, text_rec_score_thresh en predict, UI text_det_*, warmup lifespan, /health device, /export/{id}/annotated save_to_img, Run All via inferBatch.\n**Why**: Alinear con PaddleOCR 3.x oficial; no inventar APIs (sin det_db_*/use_dilation).\n**Where**: backend/app/*, frontend/src/*, README.md, docs/archive/.\n**Next**: continuidad vía engram-export + scripts/dev.",
+      "content": "**What**: Backlog cotejo: .env.example, UI text_det_*, warmup lifespan, /health device, /export/{id}/annotated save_to_img, Run All via inferBatch.\n**Why**: Alinear con PaddleOCR 3.x oficial; no inventar APIs (sin det_db_*/use_dilation).\n**Where**: backend/app/*, frontend/src/*, README.md, docs/archive/.",
       "project": "idp-ocr-studio",
       "scope": "project",
-      "revision_count": 3,
+      "revision_count": 4,
       "duplicate_count": 1,
-      "last_seen_at": "2026-07-31 00:35:00",
+      "last_seen_at": "2026-07-31 01:40:00",
       "created_at": "2026-07-29 20:41:59",
-      "updated_at": "2026-07-31 00:35:00"
+      "updated_at": "2026-07-31 01:40:00"
     }
   ],
   "prompts": []
