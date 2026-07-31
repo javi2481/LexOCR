@@ -1,93 +1,93 @@
 # IDP OCR Studio (MVP low-code)
 
-SPA académica para OCR con **PP-OCRv6**: subir imágenes, inferir, ver bounding boxes/polígonos y editar texto.
+SPA académica para OCR con **PP-OCRv6 medium**: subir imágenes, inferir, ver bounding boxes / ResultText espacial, editar texto y exportar (JSON / MD / CSV / TXT + PNG anotado).
+
+## Mapa del repo
+
+| Ruta | Rol |
+|------|-----|
+| [backend/](backend/README.md) | API FastAPI + PaddleOCR |
+| [backend/app/](backend/app/README.md) | Módulos: ocr, orientation, routes… |
+| [frontend/](frontend/README.md) | UI React + Vite |
+| [frontend/src/](frontend/src/README.md) | Componentes y libs |
+| [tests/fixtures/images/](tests/fixtures/images/README.md) | Imágenes de prueba |
+| [docs/](docs/README.md) | Producto, ejemplos, archivo |
+| [scripts/](scripts/) | Arranque dev |
+| [CHANGELOG.md](CHANGELOG.md) | Estado reciente |
 
 ## Requisitos
 
 - Python 3.11+
 - Node.js 20+
 
-## Backend
+## Quickstart
 
-```bash
+### Bootstrap (una vez)
+
+```powershell
 cd backend
-python3.11 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8100
+
+cd ..\frontend
+npm install
 ```
 
-La primera ejecución descarga modelos de PaddleOCR (puede tardar). Al arrancar el servidor se hace warmup del engine default (`fast`×`medium`). Cada combinación modo×tier se cachea al usarla por primera vez.
+### Arranque
 
-Variables de entorno de ejemplo: ver [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOME`).
+```powershell
+# Desde la raíz del repo
+.\scripts\dev.ps1
+```
 
-## Frontend
+Unix:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+./scripts/dev.sh
 ```
 
-Abrir http://localhost:5173 (API por defecto: `http://localhost:8100`).
+- Frontend: http://localhost:5173  
+- API: http://localhost:8100 (`/health`, `/docs`)
 
-## Formatos soportados
+Manual:
 
-Solo imágenes: PNG, JPG/JPEG/JFIF, WEBP, GIF, BMP, TIFF, ICO, PPM/PNM, AVIF.
+```powershell
+# terminal 1
+cd backend; .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8100
+# terminal 2
+cd frontend; npm run dev
+```
 
-PDF no está soportado.
+Variables: [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOME`).
 
-## Opciones OCR
+## Producto (resumen)
 
-En el header:
+- Tier **medium** fijo (sin selector).
+- Formatos: PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, PPM, AVIF. **Sin PDF**.
+- Rescate angular por región (verticales + diagonales); `orientation` en grados.
+- Export: JSON (con `reading_order`), Markdown, CSV, TXT, PNG anotado.
+- Detalle: [docs/PRODUCT.md](docs/PRODUCT.md). Ejemplo JSON: [docs/examples/ocr-result.example.json](docs/examples/ocr-result.example.json).
 
-| Control | Valores | Efecto |
-|---------|---------|--------|
-| Tier | tiny / small / medium | Velocidad vs precisión (PP-OCRv6 unificado, ~50 idiomas). **Único control de usuario.** |
+## Checklist e2e manual
 
-El resto son defaults de producto orientados a **máximo recall**:
+Con backend y frontend arriba, subí y corré **Run** (medium):
 
-| Parámetro | Default | Rol |
-|-----------|---------|-----|
-| `mode` | `fast` | Sin orientación de página ni unwarping |
-| `conf_threshold` | `0.9` | Solo métricas/colores en UI (`low_confidence_count`); **no** corta el motor |
-| `text_det_thresh` | `0.20` | Más regiones candidatas |
-| `text_det_box_thresh` | `0.35` | Acepta cajas más débiles |
-| `text_det_unclip_ratio` | `2.0` | Expande cajas (default oficial) |
-| `text_det_limit_side_len` | `1152` | Detalle en tipografía chica |
-| `text_det_limit_type` | `min` | Upscale si el lado menor &lt; 1152 |
-| `use_textline_orientation` | on | Texto vertical / rotado por línea |
+| Fixture | Esperado |
+|---------|----------|
+| `tests/fixtures/images/poster.avif` | `TRY` ≈ −90°, `WERE` ≈ +90° |
+| `tests/fixtures/images/nube-manzana.png` | confAvg razonable; algunas regiones con orientation ≠ 0 |
+| `tests/fixtures/images/nube-corazon.jpeg` | ídem |
+| Export **md** / **json** | Descargables y legibles |
 
-No se envía `text_rec_score_thresh` (default Paddle `0.0` = sin filtro). El parser emite una región por cada `dt_polys`. El tier se guarda en `localStorage`; cambiarlo no reprocesa solo: hay que volver a **Run**.
+También: `cd frontend && npm run build`.
 
-## Uso
+## Continuidad (no es runtime)
 
-1. Arrastrar imágenes a la galería, elegir archivos, o pegar desde el portapapeles (Ctrl+V)
-2. Elegir tier (tiny / small / medium)
-3. Click **Run** o **Run All**
-4. Revisar polígonos en el visor y editar texto
-5. Exportar JSON / CSV / TXT (texto editado; JSON incluye `poly`) o **PNG anotado** (`save_to_img` del motor)
+- `engram-export.json` / `.engram/` — memorias entre PCs (`engram import` / `sync`).
+- `.cursor/` — skills y agents del flujo de desarrollo.
 
 ## Stack
 
-- Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4
-- Backend: FastAPI + PaddleOCR PP-OCRv6 (un solo `main.py`)
-
-## Continuidad Engram (otro PC)
-
-Memorias del proyecto versionadas para continuidad entre máquinas.
-
-1. Tener el CLI `engram` instalado en el PATH.
-2. En la raíz del repo, importar el export JSON:
-
-```bash
-engram import engram-export.json
-```
-
-3. (Opcional) Si hay chunks en `.engram/`, sincronizarlos a la DB local:
-
-```bash
-engram sync --import
-```
-
-No hace falta copiar `~/.engram/engram.db`; el export y los chunks bastan.
+- Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4  
+- Backend: FastAPI + PaddleOCR PP-OCRv6 (`backend/app/`)

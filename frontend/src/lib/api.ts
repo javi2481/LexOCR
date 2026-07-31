@@ -1,63 +1,26 @@
+import type {
+  HealthInfo,
+  InferOptions,
+  OCRResult,
+  UploadResponse,
+} from "../types/ocr";
+
+export type {
+  HealthInfo,
+  InferOptions,
+  OCRResult,
+  OcrMode,
+  OcrTier,
+  Region,
+  UploadResponse,
+} from "../types/ocr";
+
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
-
-export type OcrMode = "fast" | "document";
-export type OcrTier = "tiny" | "small" | "medium";
-
-export type InferOptions = {
-  mode: OcrMode;
-  tier: OcrTier;
-  conf_threshold: number;
-  /** Defaults recall-first; el backend también los aplica si faltan */
-  text_det_box_thresh?: number;
-  text_det_thresh?: number;
-  text_det_unclip_ratio?: number;
-  text_det_limit_side_len?: number;
-  text_det_limit_type?: string;
-};
-
-export type Region = {
-  id: number;
-  text: string;
-  confidence: number;
-  bbox: { x: number; y: number; width: number; height: number };
-  poly?: number[][];
-};
-
-export type OCRResult = {
-  image_id: string;
-  filename: string;
-  status: string;
-  inference_time_ms: number;
-  confidence_avg: number;
-  regions_count: number;
-  low_confidence_count: number;
-  regions: Region[];
-  width: number;
-  height: number;
-  ocr_mode?: OcrMode;
-  ocr_tier?: OcrTier;
-  conf_threshold?: number;
-};
-
-export type UploadResponse = {
-  image_id: string;
-  filename: string;
-  preview_url?: string;
-  source_format?: string;
-};
-
-export type HealthInfo = {
-  ok: boolean;
-  cuda_compiled: boolean;
-  device: string;
-  engines_cached?: number;
-};
 
 export const DEFAULT_INFER_OPTIONS: InferOptions = {
   mode: "fast",
   tier: "medium",
   conf_threshold: 0.9,
-  // Defaults recall-first (alineados al backend)
   text_det_thresh: 0.2,
   text_det_box_thresh: 0.35,
   text_det_unclip_ratio: 2.0,
@@ -83,7 +46,10 @@ export async function upload(file: File): Promise<UploadResponse> {
   return res.json();
 }
 
-export async function infer(imageId: string, options: InferOptions = DEFAULT_INFER_OPTIONS): Promise<OCRResult> {
+export async function infer(
+  imageId: string,
+  options: InferOptions = DEFAULT_INFER_OPTIONS,
+): Promise<OCRResult> {
   const res = await fetch(`${API}/infer/${imageId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -95,7 +61,7 @@ export async function infer(imageId: string, options: InferOptions = DEFAULT_INF
 
 export async function inferBatch(
   imageIds: string[],
-  options: InferOptions = DEFAULT_INFER_OPTIONS
+  options: InferOptions = DEFAULT_INFER_OPTIONS,
 ): Promise<OCRResult[]> {
   const res = await fetch(`${API}/infer/batch`, {
     method: "POST",
@@ -106,7 +72,9 @@ export async function inferBatch(
   return res.json();
 }
 
-export async function getStatus(imageId: string): Promise<{ image_id: string; status: string }> {
+export async function getStatus(
+  imageId: string,
+): Promise<{ image_id: string; status: string }> {
   const res = await fetch(`${API}/status/${imageId}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -120,6 +88,8 @@ export async function downloadAnnotated(imageId: string, filename: string): Prom
   const a = document.createElement("a");
   a.href = url;
   a.download = filename.endsWith(".png") ? filename : `${filename}_annotated.png`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

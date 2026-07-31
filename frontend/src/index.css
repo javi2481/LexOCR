@@ -69,10 +69,44 @@ input:focus-visible,
   transition: border-color 150ms ease, background-color 150ms ease;
 }
 
+/* Barra de progreso indeterminada (inferencia OCR sin % real) */
+.progress-track {
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-raised));
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 280ms ease;
+}
+
+.progress-bar--indeterminate {
+  width: 40%;
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .twin-panel,
   .drop-target,
   svg {
     transition: none !important;
+  }
+
+  .progress-bar--indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.55;
   }
 }

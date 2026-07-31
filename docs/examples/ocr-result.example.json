@@ -1,0 +1,43 @@
+{
+  "image_id": "example-poster-id",
+  "filename": "poster.avif",
+  "status": "completed",
+  "inference_time_ms": 15000,
+  "confidence_avg": 0.994,
+  "regions_count": 17,
+  "low_confidence_count": 0,
+  "width": 626,
+  "height": 626,
+  "ocr_mode": "fast",
+  "ocr_tier": "medium",
+  "conf_threshold": 0.9,
+  "regions": [
+    {
+      "id": 0,
+      "text": "RETRO",
+      "confidence": 1.0,
+      "bbox": { "x": 152.0, "y": 4.0, "width": 384.0, "height": 145.0 },
+      "poly": [[152, 4], [536, 4], [536, 149], [152, 149]],
+      "orientation": 0.0,
+      "reading_order": 0
+    },
+    {
+      "id": 1,
+      "text": "TRY",
+      "confidence": 1.0,
+      "bbox": { "x": 87.0, "y": 14.0, "width": 90.0, "height": 124.0 },
+      "poly": [[90, 14], [177, 16], [174, 138], [87, 136]],
+      "orientation": -90.0,
+      "reading_order": 1
+    },
+    {
+      "id": 14,
+      "text": "WERE",
+      "confidence": 1.0,
+      "bbox": { "x": 473.0, "y": 429.0, "width": 60.0, "height": 101.0 },
+      "poly": [[473, 431], [530, 429], [533, 529], [476, 530]],
+      "orientation": 90.0,
+      "reading_order": 14
+    }
+  ]
+}

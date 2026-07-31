@@ -1,0 +1,67 @@
+export type OcrMode = "fast" | "document";
+export type OcrTier = "tiny" | "small" | "medium";
+
+export type InferOptions = {
+  mode: OcrMode;
+  tier: OcrTier;
+  conf_threshold: number;
+  text_det_box_thresh?: number;
+  text_det_thresh?: number;
+  text_det_unclip_ratio?: number;
+  text_det_limit_side_len?: number;
+  text_det_limit_type?: string;
+};
+
+export type Region = {
+  id: number;
+  text: string;
+  confidence: number;
+  bbox: { x: number; y: number; width: number; height: number };
+  poly?: number[][];
+  orientation?: number;
+};
+
+export type OCRResult = {
+  image_id: string;
+  filename: string;
+  status: string;
+  inference_time_ms: number;
+  confidence_avg: number;
+  regions_count: number;
+  low_confidence_count: number;
+  regions: Region[];
+  width: number;
+  height: number;
+  ocr_mode?: OcrMode;
+  ocr_tier?: OcrTier;
+  conf_threshold?: number;
+};
+
+export type UploadResponse = {
+  image_id: string;
+  filename: string;
+  preview_url?: string;
+  source_format?: string;
+};
+
+export type HealthInfo = {
+  ok: boolean;
+  cuda_compiled: boolean;
+  device: string;
+  engines_cached?: number;
+};
+
+export type Status = "pending" | "processing" | "completed" | "error";
+export type ViewMode = "original" | "boxes" | "text";
+
+export type ImageItem = {
+  localId: string;
+  id?: string;
+  filename: string;
+  status: Status;
+  previewUrl: string;
+  file: File;
+  result?: OCRResult;
+  error?: string;
+  revokePreview?: boolean;
+};

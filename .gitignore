@@ -1,4 +1,5 @@
 uploads/
+backend/uploads/
 .venv/
 .paddlex/
 .cache/
@@ -18,3 +19,9 @@ secrets/
 # Local AI runtime state
 .atl/
 .gstack/
+# Generated OCR / e2e artifacts
+artifacts/*
+!artifacts/.gitkeep
+**/_e2e_*/
+backend/_probe*
+backend/_orient_*
