@@ -11,6 +11,9 @@
   "ocr_mode": "fast",
   "ocr_tier": "medium",
   "conf_threshold": 0.9,
+  "page_index": null,
+  "page_count": null,
+  "source_format": "avif",
   "regions": [
     {
       "id": 0,

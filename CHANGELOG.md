@@ -6,6 +6,7 @@
 - N páginas → N `image_id` + preview PNG + rescue; tope 50; sin libs PDF ajenas.
 - Frontend: accept `.pdf`, galería expandida `pages[]` (`page_index` / `page_count`).
 - Token Official API (cloud) solo en `.env` local; HPI / SDK cloud fuera de este corte.
+- Docs/READMEs alineados (raíz, backend, frontend, fixtures, ejemplo JSON).
 
 ## 2026-08-02 — Higiene meta OCR → LLM
 

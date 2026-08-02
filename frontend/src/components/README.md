@@ -7,7 +7,7 @@ Presentación del studio OCR. Reciben estado y callbacks por props; no llaman a 
 ## Zonas
 
 - `Header` — Run / Run All / Clear, exports, tema, métricas
-- `Gallery` — miniaturas y dropzone
+- `Gallery` — miniaturas y dropzone (páginas PDF/TIFF como ítems)
 - `ImageViewer` — imagen + boxes
 - `ResultText` — texto espacial SVG (poly + orientación)
 - `WordsTray` — lista editable de regiones

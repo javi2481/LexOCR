@@ -2,15 +2,15 @@
 
 ## Qué hace
 
-Compone el studio OCR y orquesta sesión, layout espacial y export.
+Compone el studio OCR y orquesta sesión (incl. expansión de `pages[]` de PDF/TIFF), layout espacial y export.
 
 ## Mapa
 
-- `App.tsx` — composición de layout (tema, zoom, viewMode, wire de props)
-- `hooks/useStudioSession.ts` — estado de imágenes, upload, infer, batch, edición
+- `App.tsx` — composición de layout (tema, zoom, viewMode, accept `.pdf`)
+- `hooks/useStudioSession.ts` — estado, upload, expansión multipágina, infer, batch, edición
 - `components/` — zonas presentacionales del studio
-- `lib/` — API, geometría, reading order, export
-- `types/` — contratos TypeScript
+- `lib/` — API, geometría, reading order, export, tipos de archivo
+- `types/` — contratos TypeScript (`UploadPage`, `page_index`, …)
 
 ## Qué no hace
 

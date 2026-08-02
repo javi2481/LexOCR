@@ -2,12 +2,12 @@
 
 ## Qué hace
 
-Studio web: galería, visor con boxes, ResultText espacial, edición de palabras y export a formatos LLM-ready.
+Studio web: galería (incluye páginas de PDF/TIFF), visor con boxes, ResultText espacial, edición de palabras y export a formatos LLM-ready.
 
 ## Entrada / salida
 
-- **Entrada:** archivos de imagen aceptados por el backend (vía upload API).
-- **Salida:** UI + descargas JSON / MD / CSV / TXT / PNG anotado.
+- **Entrada:** imágenes y **PDF** / TIFF (upload API). Un documento se expande a N ítems en la galería.
+- **Salida:** UI + descargas JSON / MD / CSV / TXT / PNG anotado (`page_index` en export de páginas).
 
 ## Desarrollo
 

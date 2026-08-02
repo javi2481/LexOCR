@@ -1,8 +1,8 @@
 # IDP OCR Studio
 
-SPA académica para **extraer texto de imágenes** y exportarlo a formatos **consumibles por un LLM** (JSON / Markdown / CSV / TXT + PNG anotado).
+SPA académica para **extraer texto de imágenes y documentos (PDF/TIFF)** y exportarlo a formatos **consumibles por un LLM** (JSON / Markdown / CSV / TXT + PNG anotado).
 
-**v1** usa OCR clásico (**PP-OCRv6 medium**). **v2** usará un **VLM**. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
+**v1** usa OCR clásico (**PP-OCRv6 medium**), con pipeline nativo multipágina para PDF/TIFF. **v2** usará un **VLM**. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
 
 **License:** [Apache License 2.0](LICENSE)
 
@@ -55,25 +55,28 @@ Unix:
 - Frontend: http://localhost:5173  
 - API: http://localhost:8100 (`/health`, `/docs`)
 
-Variables: [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOME`).
+Variables: [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOME`, opcional `PADDLEOCR_API_TOKEN` para SDK cloud futuro — el pipeline local no lo usa).
 
 ## Producto (resumen)
 
 - Motor **PP-OCRv6 medium** fijo.
-- Formatos: PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, PPM, AVIF, **PDF** / TIFF multipágina (vía PP-OCRv6 nativo, tope 50 págs.).
-- Rescate angular por región; export JSON (`reading_order`), Markdown, CSV, TXT, PNG anotado.
+- **Imágenes:** PNG, JPEG, WEBP, GIF, BMP, ICO, PPM, AVIF (engine escena).
+- **Documentos:** PDF y TIFF multipágina vía `PaddleOCR.predict` nativo (engine documento: orientation + unwarping; tope **50** págs.; sin Poppler/`pypdfium2`).
+- Rescate angular por región; export JSON (`reading_order`, `page_index`), Markdown, CSV, TXT, PNG anotado.
 - Ejemplo JSON: [docs/examples/ocr-result.example.json](docs/examples/ocr-result.example.json).
 
 ## Checklist e2e manual
 
-Con backend y frontend arriba, subí y corré **Run** (medium):
+Con backend y frontend arriba:
 
-| Fixture | Esperado |
-|---------|----------|
-| `tests/fixtures/images/poster.avif` | `TRY` ≈ −90°, `WERE` ≈ +90° |
-| `tests/fixtures/images/nube-manzana.png` | confAvg razonable; algunas regiones con orientation ≠ 0 |
-| `tests/fixtures/images/nube-corazon.jpeg` | ídem |
-| Export **md** / **json** | Descargables y legibles |
+| Caso | Cómo / esperado |
+|------|-----------------|
+| `tests/fixtures/images/poster.avif` | **Run** → `TRY` ≈ −90°, `WERE` ≈ +90° |
+| `nube-manzana.png` / `nube-corazon.jpeg` | confAvg razonable; algunas `orientation ≠ 0` |
+| PDF corto (2–3 págs.) | Al subir: galería con N ítems `doc.pdf · p.k/n`, OCR ya hecho |
+| TIFF multipágina | Ídem; si Paddle no pagina, fallback Pillow por frame |
+| PDF > 50 págs. | HTTP 400 |
+| Export **md** / **json** | Incluyen `page_index` / `page_count` en páginas de documento |
 
 También: `cd frontend && npm run build`.
 

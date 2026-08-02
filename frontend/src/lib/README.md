@@ -7,10 +7,10 @@ Cliente HTTP, geometría de resultados, orden de lectura y serialización de exp
 ## Módulos
 
 - `api.ts` — upload / infer / batch / health / annotated download; `DEFAULT_INFER_OPTIONS`
-- `exportResult.ts` — JSON (con `reading_order`), Markdown, CSV, TXT
+- `exportResult.ts` — JSON (con `reading_order`), Markdown (`page_index` si aplica), CSV, TXT
 - `readingOrder.ts` — orden espacial de regiones
 - `resultLayout.ts` — layout SVG de ResultText
-- `files.ts` — tipos de archivo aceptados / preview
+- `files.ts` — accept (incl. `.pdf`), preview servidor, `isDocumentFile`
 
 ## Qué no hace
 
