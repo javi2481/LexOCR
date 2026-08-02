@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-02 — PDF/TIFF multipágina vía PP-OCRv6
+
+- Upload acepta PDF y TIFF; `PaddleOCR.predict` nativo con engine documento (`doc_orientation` + `unwarping`).
+- N páginas → N `image_id` + preview PNG + rescue; tope 50; sin libs PDF ajenas.
+- Frontend: accept `.pdf`, galería expandida `pages[]` (`page_index` / `page_count`).
+- Token Official API (cloud) solo en `.env` local; HPI / SDK cloud fuera de este corte.
+
 ## 2026-08-02 — Higiene meta OCR → LLM
 
 - Repo alineado a la misión: imagen → OCR clásico → formatos para LLM; v2 = VLM.

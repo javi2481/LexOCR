@@ -1,15 +1,17 @@
 """Inicialización y ejecución de PaddleOCR."""
 
+from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
 from .parsing import _parse_paddle_raw
 from .schemas import InferOptions
-from .storage import UPLOAD_DIR
+from .storage import UPLOAD_DIR, _array_to_png
 
 _DEVICE_INFO: dict[str, Any] = {"cuda_compiled": False, "device": "cpu"}
 _ocr_engine: Any | None = None
+_ocr_doc_engine: Any | None = None
 _rec_engine: Any | None = None
 
 OCR_TIER = "medium"
@@ -53,18 +55,19 @@ def _predict_kwargs(options: InferOptions) -> dict[str, Any]:
     return {k: v for k, v in mapping.items() if v is not None}
 
 
-def get_ocr():
-    """Lazy-init PaddleOCR PP-OCRv6 medium (motor fijo v1)."""
-    global _ocr_engine
-    if _ocr_engine is not None:
-        return _ocr_engine
+def _create_paddle_ocr(
+    *,
+    use_doc_orientation_classify: bool,
+    use_doc_unwarping: bool,
+) -> Any:
+    """Crea un PaddleOCR PP-OCRv6 medium con drop progresivo de kwargs no soportados."""
     from paddleocr import PaddleOCR
     if not _DEVICE_INFO.get("device"):
         _refresh_device_info()
     kwargs: dict[str, Any] = {
         "ocr_version": "PP-OCRv6",
-        "use_doc_orientation_classify": False,
-        "use_doc_unwarping": False,
+        "use_doc_orientation_classify": use_doc_orientation_classify,
+        "use_doc_unwarping": use_doc_unwarping,
         # Nombre 3.x del obsoleto use_angle_cls; solo clasifica 0/180.
         "use_textline_orientation": True,
         "text_detection_model_name": f"PP-OCRv6_{OCR_TIER}_det",
@@ -73,7 +76,6 @@ def get_ocr():
         # oneDNN/mkldnn rompe predict en algunos builds Windows (PIR Unimplemented)
         "enable_mkldnn": False,
     }
-    engine = None
     drop_order = (
         "enable_mkldnn", "device", "text_detection_model_name",
         "text_recognition_model_name", "ocr_version",
@@ -81,8 +83,7 @@ def get_ocr():
     attempt = dict(kwargs)
     while True:
         try:
-            engine = PaddleOCR(**attempt)
-            break
+            return PaddleOCR(**attempt)
         except TypeError:
             dropped = False
             for name in drop_order:
@@ -91,16 +92,41 @@ def get_ocr():
                     dropped = True
                     break
             if not dropped:
-                engine = PaddleOCR()
-                break
+                return PaddleOCR()
         except Exception:
             if "text_detection_model_name" in attempt:
                 attempt.pop("text_detection_model_name", None)
                 attempt.pop("text_recognition_model_name", None)
                 continue
             raise
-    _ocr_engine = engine
-    return engine
+
+
+def get_ocr():
+    """Lazy-init PaddleOCR PP-OCRv6 medium escena (sin orientation/unwarping de página)."""
+    global _ocr_engine
+    if _ocr_engine is not None:
+        return _ocr_engine
+    _ocr_engine = _create_paddle_ocr(
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+    )
+    return _ocr_engine
+
+
+def get_ocr_document():
+    """Lazy-init PaddleOCR PP-OCRv6 medium documento (orientation + unwarping ON)."""
+    global _ocr_doc_engine
+    if _ocr_doc_engine is not None:
+        return _ocr_doc_engine
+    _ocr_doc_engine = _create_paddle_ocr(
+        use_doc_orientation_classify=True,
+        use_doc_unwarping=True,
+    )
+    return _ocr_doc_engine
+
+
+def engines_cached_count() -> int:
+    return sum(1 for e in (_ocr_engine, _ocr_doc_engine) if e is not None)
 
 
 def get_recognizer():
@@ -175,6 +201,148 @@ def _call_predict(engine: Any, path: str, options: InferOptions | None) -> Any:
         return engine.ocr(path)
 
 
+def _as_result_list(raw: Any) -> list[Any]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [p for p in raw if p is not None]
+    return [raw]
+
+
+def _page_index_of(page: Any, fallback: int) -> int:
+    data = page
+    if hasattr(page, "get"):
+        val = page.get("page_index")
+        if val is not None:
+            return int(val)
+    val = getattr(page, "page_index", None)
+    if val is not None:
+        return int(val)
+    if hasattr(page, "json"):
+        js = page.json
+        if callable(js):
+            js = js()
+        if isinstance(js, dict):
+            nested = js.get("res", js)
+            if isinstance(nested, dict) and nested.get("page_index") is not None:
+                return int(nested["page_index"])
+            if js.get("page_index") is not None:
+                return int(js["page_index"])
+    return fallback
+
+
+def _extract_page_image(page: Any) -> Any | None:
+    """Intenta obtener la imagen de página (post-preprocess) del Result Paddle."""
+    candidates: list[Any] = []
+    img_attr = getattr(page, "img", None)
+    if callable(img_attr):
+        try:
+            img_attr = img_attr()
+        except Exception:
+            img_attr = None
+    if isinstance(img_attr, dict):
+        for key in (
+            "preprocessed_img", "doc_preprocessor_res", "input_img",
+            "ocr_res_img", "output_img",
+        ):
+            if key in img_attr and img_attr[key] is not None:
+                candidates.append(img_attr[key])
+        for val in img_attr.values():
+            if val is not None:
+                candidates.append(val)
+    elif img_attr is not None:
+        candidates.append(img_attr)
+
+    for key in ("output_img", "input_img", "doc_preprocessor_res"):
+        val = page.get(key) if hasattr(page, "get") else getattr(page, key, None)
+        if isinstance(val, dict):
+            candidates.append(val.get("output_img") or val.get("img"))
+        elif val is not None:
+            candidates.append(val)
+
+    if hasattr(page, "json"):
+        js = page.json
+        if callable(js):
+            try:
+                js = js()
+            except Exception:
+                js = None
+        if isinstance(js, dict):
+            res = js.get("res", js)
+            if isinstance(res, dict):
+                pre = res.get("doc_preprocessor_res")
+                if isinstance(pre, dict):
+                    candidates.append(pre.get("output_img"))
+                candidates.append(res.get("input_img"))
+
+    for cand in candidates:
+        if cand is None:
+            continue
+        if isinstance(cand, dict):
+            inner = cand.get("output_img") or cand.get("img") or cand.get("input_img")
+            if inner is not None:
+                return inner
+            continue
+        return cand
+    return None
+
+
+def _materialize_page_png(
+    page: Any,
+    image_id: str,
+    *,
+    tiff_path: Path | None = None,
+    frame_index: int = 0,
+) -> Path:
+    """PNG de preview por página vía imagen del Result o fallback TIFF/save_to_img."""
+    from .storage import _tiff_frame_to_png
+
+    extracted = _extract_page_image(page)
+    if extracted is not None:
+        saved = _array_to_png(extracted, image_id)
+        if saved is not None:
+            return saved
+
+    if tiff_path is not None:
+        try:
+            return _tiff_frame_to_png(tiff_path, frame_index, image_id)
+        except Exception as exc:
+            print(f"[preview] tiff frame fallback failed: {exc}")
+
+    out = UPLOAD_DIR / f"{image_id}.png"
+    tmp_dir = UPLOAD_DIR / f"_preview_{image_id}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        if hasattr(page, "save_to_img"):
+            try:
+                page.save_to_img(str(tmp_dir))
+            except TypeError:
+                page.save_to_img(save_path=str(tmp_dir))
+            candidates = sorted(
+                [
+                    p for p in tmp_dir.iterdir()
+                    if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg")
+                ],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                img = Image.open(candidates[0])
+                img.convert("RGB").save(out, format="PNG")
+                return out
+    finally:
+        try:
+            for p in tmp_dir.iterdir():
+                p.unlink(missing_ok=True)
+            tmp_dir.rmdir()
+        except Exception:
+            pass
+
+    # Placeholder mínimo si no hay forma de materializar (no debería llegar aquí).
+    Image.new("RGB", (64, 64), color=(245, 245, 245)).save(out, format="PNG")
+    return out
+
+
 def _run_paddle(
     path: str,
     options: InferOptions | None = None,
@@ -182,3 +350,13 @@ def _run_paddle(
     engine = get_ocr()
     raw = _call_predict(engine, path, options)
     return _parse_paddle_raw(raw)
+
+
+def _run_paddle_document(
+    path: str,
+    options: InferOptions | None = None,
+) -> list[Any]:
+    """predict multipágina con engine documento; lista de Results."""
+    engine = get_ocr_document()
+    raw = _call_predict(engine, path, options)
+    return _as_result_list(raw)

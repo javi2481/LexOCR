@@ -60,7 +60,7 @@ Variables: [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOM
 ## Producto (resumen)
 
 - Motor **PP-OCRv6 medium** fijo.
-- Formatos de imagen: PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, PPM, AVIF. **Sin PDF**.
+- Formatos: PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, PPM, AVIF, **PDF** / TIFF multipágina (vía PP-OCRv6 nativo, tope 50 págs.).
 - Rescate angular por región; export JSON (`reading_order`), Markdown, CSV, TXT, PNG anotado.
 - Ejemplo JSON: [docs/examples/ocr-result.example.json](docs/examples/ocr-result.example.json).
 

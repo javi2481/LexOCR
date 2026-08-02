@@ -160,4 +160,7 @@ def _build_result(
         low_confidence_count=len([c for c in confs if c < thr]),
         regions=regions, width=width, height=height,
         ocr_mode="fast", ocr_tier="medium", conf_threshold=thr,
+        page_index=item.get("page_index"),
+        page_count=item.get("page_count"),
+        source_format=item.get("source_format"),
     )

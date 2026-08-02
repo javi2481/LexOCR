@@ -7,8 +7,39 @@ import {
   inferBatch,
   upload,
 } from "../lib/api";
-import { isAcceptedFile, needsServerPreview } from "../lib/files";
-import type { HealthInfo, ImageItem, InferOptions } from "../types/ocr";
+import { isAcceptedFile, isDocumentFile, needsServerPreview } from "../lib/files";
+import type { HealthInfo, ImageItem, InferOptions, OCRResult, UploadResponse } from "../types/ocr";
+
+function pagesFromUpload(file: File, response: UploadResponse, placeholderLocalId?: string): ImageItem[] {
+  const pages = response.pages?.length
+    ? response.pages
+    : [
+        {
+          image_id: response.image_id,
+          page_index: 0,
+          page_count: 1,
+          filename: response.filename,
+          status: "pending",
+          source_format: response.source_format,
+        },
+      ];
+  return pages.map((page, index) => {
+    const completed = page.status === "completed" && page.result;
+    return {
+      localId: index === 0 && placeholderLocalId ? placeholderLocalId : crypto.randomUUID(),
+      id: page.image_id,
+      filename: page.filename || response.filename,
+      status: (completed ? "completed" : page.status === "error" ? "error" : "pending") as ImageItem["status"],
+      previewUrl: imageUrl(page.image_id),
+      file,
+      revokePreview: false,
+      page_index: page.page_index,
+      page_count: page.page_count,
+      source_format: page.source_format ?? response.source_format,
+      result: page.result as OCRResult | undefined,
+    };
+  });
+}
 
 export function useStudioSession() {
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -71,15 +102,27 @@ export function useStudioSession() {
     );
   };
 
+  const replacePlaceholderWithPages = (placeholderLocalId: string, nextPages: ImageItem[]) => {
+    setImages((previous) => {
+      const idx = previous.findIndex((image) => image.localId === placeholderLocalId);
+      if (idx < 0) return [...previous, ...nextPages];
+      const copy = [...previous];
+      copy.splice(idx, 1, ...nextPages);
+      return copy;
+    });
+    setSelectedId((id) => (id === placeholderLocalId ? nextPages[0]?.localId ?? null : id));
+  };
+
   const addFiles = useCallback((files: FileList | File[]) => {
     const list = Array.from(files).filter(isAcceptedFile);
     if (!list.length) return;
     const next: ImageItem[] = list.map((file) => {
       const localPreview = !needsServerPreview(file);
+      const doc = isDocumentFile(file);
       return {
         localId: crypto.randomUUID(),
         filename: file.name,
-        status: "pending",
+        status: doc ? "processing" : "pending",
         previewUrl: localPreview ? URL.createObjectURL(file) : "",
         file,
         revokePreview: localPreview,
@@ -87,34 +130,48 @@ export function useStudioSession() {
     });
     setImages((previous) => [...previous, ...next]);
     setSelectedId((id) => id ?? next[0].localId);
-    next
-      .filter((item) => needsServerPreview(item.file))
-      .forEach(async (item) => {
-        try {
-          const response = await upload(item.file);
+
+    next.forEach(async (item) => {
+      if (!needsServerPreview(item.file) && !isDocumentFile(item.file)) return;
+      try {
+        const response = await upload(item.file);
+        const pages = pagesFromUpload(item.file, response, item.localId);
+        if (item.revokePreview && item.previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
+        if (pages.length > 1 || isDocumentFile(item.file)) {
+          replacePlaceholderWithPages(item.localId, pages);
+          const lastCompleted = [...pages].reverse().find((p) => p.result);
+          if (lastCompleted?.result) setLastMs(lastCompleted.result.inference_time_ms);
+        } else {
+          const page = pages[0];
           setImages((previous) =>
             previous.map((image) =>
               image.localId === item.localId
                 ? {
                     ...image,
-                    id: response.image_id,
-                    previewUrl: imageUrl(response.image_id),
+                    id: page.id,
+                    previewUrl: page.previewUrl,
                     revokePreview: false,
+                    page_index: page.page_index,
+                    page_count: page.page_count,
+                    source_format: page.source_format,
                   }
                 : image,
             ),
           );
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Error al subir";
-          setImages((previous) =>
-            previous.map((image) =>
-              image.localId === item.localId
-                ? { ...image, status: "error", error: message }
-                : image,
-            ),
-          );
         }
-      });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Error al subir";
+        setImages((previous) =>
+          previous.map((image) =>
+            image.localId === item.localId
+              ? { ...image, status: "error", error: message }
+              : image,
+          ),
+        );
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -147,17 +204,40 @@ export function useStudioSession() {
     try {
       let imageId = item.id;
       if (!imageId) {
-        setBusyLabel("Subiendo imagen…");
+        setBusyLabel(
+          isDocumentFile(item.file) ? "Procesando documento…" : "Subiendo imagen…",
+        );
         const response = await upload(item.file);
+        if (response.pages && response.pages.length > 1) {
+          const pages = pagesFromUpload(item.file, response, item.localId);
+          if (item.revokePreview && item.previewUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(item.previewUrl);
+          }
+          replacePlaceholderWithPages(item.localId, pages);
+          const last = pages[pages.length - 1];
+          if (last.result) setLastMs(last.result.inference_time_ms);
+          return last.result!;
+        }
         imageId = response.image_id;
         if (item.revokePreview && item.previewUrl.startsWith("blob:")) {
           URL.revokeObjectURL(item.previewUrl);
         }
+        const page0 = response.pages?.[0];
         updateImage(item.localId, {
           id: imageId,
           previewUrl: imageUrl(imageId),
           revokePreview: false,
+          page_index: page0?.page_index,
+          page_count: page0?.page_count,
+          source_format: response.source_format,
+          ...(page0?.result
+            ? { status: "completed" as const, result: page0.result }
+            : {}),
         });
+        if (page0?.result) {
+          setLastMs(page0.result.inference_time_ms);
+          return page0.result;
+        }
       }
       setBusyLabel("Infiriendo OCR…");
       const result = await infer(imageId, ocrOptions);
@@ -206,11 +286,39 @@ export function useStudioSession() {
           setBusyLabel(`Subiendo ${ready.length + 1}/${pending.length}…`);
           updateImage(current.localId, { status: "processing", error: undefined });
           const response = await upload(current.file);
+          if (response.pages && response.pages.length > 1) {
+            const pages = pagesFromUpload(current.file, response, current.localId);
+            if (current.revokePreview && current.previewUrl.startsWith("blob:")) {
+              URL.revokeObjectURL(current.previewUrl);
+            }
+            replacePlaceholderWithPages(current.localId, pages);
+            for (const page of pages) {
+              if (page.result) setLastMs(page.result.inference_time_ms);
+              bumpProgress();
+            }
+            continue;
+          }
           const previewUrl = current.revokePreview
             ? imageUrl(response.image_id)
             : current.previewUrl;
           if (current.revokePreview && current.previewUrl.startsWith("blob:")) {
             URL.revokeObjectURL(current.previewUrl);
+          }
+          const page0 = response.pages?.[0];
+          if (page0?.result) {
+            updateImage(current.localId, {
+              id: response.image_id,
+              previewUrl,
+              revokePreview: false,
+              status: "completed",
+              result: page0.result,
+              page_index: page0.page_index,
+              page_count: page0.page_count,
+              source_format: response.source_format,
+            });
+            setLastMs(page0.result.inference_time_ms);
+            bumpProgress();
+            continue;
           }
           const updated: ImageItem = {
             ...current,

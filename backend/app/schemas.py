@@ -39,6 +39,10 @@ class OCRResult(BaseModel):
     ocr_mode: str = "fast"
     ocr_tier: str = "medium"
     conf_threshold: float = 0.9
+    # Multipágina (PDF/TIFF); None en imágenes de escena.
+    page_index: int | None = None
+    page_count: int | None = None
+    source_format: str | None = None
 
 
 class BatchRequest(InferOptions):

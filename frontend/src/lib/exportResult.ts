@@ -48,6 +48,13 @@ export function exportResult(
       "---",
       `filename: ${filename}`,
       `ocr_tier: ${result.ocr_tier ?? "medium"}`,
+      ...(result.page_index != null
+        ? [
+            `page_index: ${result.page_index}`,
+            `page_count: ${result.page_count ?? ""}`,
+            `source_format: ${result.source_format ?? ""}`,
+          ]
+        : []),
       `regions_count: ${result.regions_count}`,
       `confidence_avg: ${result.confidence_avg}`,
       `low_confidence_count: ${result.low_confidence_count}`,

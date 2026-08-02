@@ -30,6 +30,20 @@ export type OCRResult = {
   ocr_mode?: string;
   ocr_tier?: string;
   conf_threshold?: number;
+  page_index?: number | null;
+  page_count?: number | null;
+  source_format?: string | null;
+};
+
+export type UploadPage = {
+  image_id: string;
+  page_index: number;
+  page_count: number;
+  filename: string;
+  status: string;
+  preview_url?: string;
+  source_format?: string;
+  result?: OCRResult;
 };
 
 export type UploadResponse = {
@@ -37,6 +51,8 @@ export type UploadResponse = {
   filename: string;
   preview_url?: string;
   source_format?: string;
+  page_count?: number;
+  pages?: UploadPage[];
 };
 
 export type HealthInfo = {
@@ -59,4 +75,7 @@ export type ImageItem = {
   result?: OCRResult;
   error?: string;
   revokePreview?: boolean;
+  page_index?: number;
+  page_count?: number;
+  source_format?: string;
 };

@@ -150,7 +150,7 @@ export default function App() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,image/*"
+        accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.avif,.tif,.tiff,.ico,.ppm,.pnm,.pdf,image/*,application/pdf"
         multiple
         className="hidden"
         onChange={(event) => event.target.files && addFiles(event.target.files)}
