@@ -32,7 +32,7 @@ def register_routes(app: FastAPI) -> None:
             "ok": True,
             "cuda_compiled": bool(info.get("cuda_compiled")),
             "device": info.get("device", "cpu"),
-            "engines_cached": len(ocr._ocr_cache),
+            "engines_cached": 1 if ocr._ocr_engine is not None else 0,
         }
 
     @app.get("/image/{image_id}")
@@ -58,7 +58,7 @@ def register_routes(app: FastAPI) -> None:
             options = InferOptions(**raw_opts)
         except Exception:
             options = InferOptions()
-        engine = get_ocr(options.mode, options.tier)
+        engine = get_ocr()
         try:
             raw = _call_predict(engine, str(path), options)
         except Exception as exc:
@@ -138,8 +138,6 @@ def register_routes(app: FastAPI) -> None:
     def infer_batch(body: BatchRequest):
         # Debe registrarse antes de /infer/{image_id}.
         options = InferOptions(
-            mode=body.mode,
-            tier=body.tier,
             conf_threshold=body.conf_threshold,
             text_det_box_thresh=body.text_det_box_thresh,
             text_det_thresh=body.text_det_thresh,
@@ -162,12 +160,10 @@ def register_routes(app: FastAPI) -> None:
         item["last_options"] = options.model_dump()
         try:
             start = time.time()
-            lines, textline_angles = _run_paddle(
-                item["path"], options.mode, options.tier, options,
-            )
+            lines, textline_angles = _run_paddle(item["path"], options)
             try:
                 lines, orientations = _rescue_oriented_lines(
-                    item["path"], lines, textline_angles, options.tier,
+                    item["path"], lines, textline_angles,
                 )
             except Exception as exc:
                 # El segundo pase es una mejora: si falla, se conserva la lectura del pipeline.

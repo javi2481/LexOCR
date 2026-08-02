@@ -9,8 +9,6 @@ export type {
   HealthInfo,
   InferOptions,
   OCRResult,
-  OcrMode,
-  OcrTier,
   Region,
   UploadResponse,
 } from "../types/ocr";
@@ -18,8 +16,6 @@ export type {
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
 
 export const DEFAULT_INFER_OPTIONS: InferOptions = {
-  mode: "fast",
-  tier: "medium",
   conf_threshold: 0.9,
   text_det_thresh: 0.2,
   text_det_box_thresh: 0.35,

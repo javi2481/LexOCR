@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-02 — Higiene meta OCR → LLM
+
+- Repo alineado a la misión: imagen → OCR clásico → formatos para LLM; v2 = VLM.
+- Eliminado ruido: `docs/archive/`, `.cursor/`, `.engram/`, `engram-export.json`.
+- Motor fijo medium: sin selectores `mode`/`tier` en API ni UI; metadato `ocr_tier: medium` en export.
+- Documentación y READMEs de capacidad reescritos; licencia **Apache-2.0**.
+- `.gitignore`: tooling local (`.cursor/`, Engram).
+
 ## 2026-07-30 — v1 cerrada
 
 - **v1 freeze**: fin de iteración del pipeline clásico PP-OCRv6. **v2 usará VLM** (ver [docs/PRODUCT.md](docs/PRODUCT.md)).

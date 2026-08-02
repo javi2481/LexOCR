@@ -1,16 +1,9 @@
 """Modelos de entrada y salida de la API."""
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
-
-OcrMode = Literal["fast", "document"]
-OcrTier = Literal["tiny", "small", "medium"]
 
 
 class InferOptions(BaseModel):
-    mode: OcrMode = "fast"
-    tier: OcrTier = "medium"
     # Solo UI/métricas (low_confidence_count, colores). No corta el motor.
     conf_threshold: float = Field(default=0.9, ge=0.5, le=0.99)
     # Defaults recall-first (scene/display). None omite el param → default Paddle.
@@ -42,8 +35,9 @@ class OCRResult(BaseModel):
     regions: list[Region]
     width: int
     height: int
-    ocr_mode: OcrMode = "fast"
-    ocr_tier: OcrTier = "medium"
+    # Motor fijo v1 (metadato de export / LLM).
+    ocr_mode: str = "fast"
+    ocr_tier: str = "medium"
     conf_threshold: float = 0.9
 
 

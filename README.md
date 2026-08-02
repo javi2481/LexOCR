@@ -1,8 +1,10 @@
-# IDP OCR Studio (MVP low-code) — v1
+# IDP OCR Studio
 
-SPA académica para OCR con **PP-OCRv6 medium**: subir imágenes, inferir, ver bounding boxes / ResultText espacial, editar texto y exportar (JSON / MD / CSV / TXT + PNG anotado).
+SPA académica para **extraer texto de imágenes** y exportarlo a formatos **consumibles por un LLM** (JSON / Markdown / CSV / TXT + PNG anotado).
 
-**v1 cerrada (2026-07-30).** La **v2** usará un **VLM** en lugar de seguir exprimiendo detección+reconocimiento clásico. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
+**v1** usa OCR clásico (**PP-OCRv6 medium**). **v2** usará un **VLM**. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
+
+**License:** [Apache License 2.0](LICENSE)
 
 ## Mapa del repo
 
@@ -13,9 +15,10 @@ SPA académica para OCR con **PP-OCRv6 medium**: subir imágenes, inferir, ver b
 | [frontend/](frontend/README.md) | UI React + Vite |
 | [frontend/src/](frontend/src/README.md) | Componentes y libs |
 | [tests/fixtures/images/](tests/fixtures/images/README.md) | Imágenes de prueba |
-| [docs/](docs/README.md) | Producto, ejemplos, archivo |
+| [docs/](docs/README.md) | Producto y ejemplos |
 | [scripts/](scripts/) | Arranque dev |
-| [CHANGELOG.md](CHANGELOG.md) | Estado reciente |
+| [CHANGELOG.md](CHANGELOG.md) | Cambios recientes |
+| [LICENSE](LICENSE) | Apache-2.0 |
 
 ## Requisitos
 
@@ -52,24 +55,14 @@ Unix:
 - Frontend: http://localhost:5173  
 - API: http://localhost:8100 (`/health`, `/docs`)
 
-Manual:
-
-```powershell
-# terminal 1
-cd backend; .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8100
-# terminal 2
-cd frontend; npm run dev
-```
-
 Variables: [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOME`).
 
 ## Producto (resumen)
 
-- Tier **medium** fijo (sin selector).
-- Formatos: PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, PPM, AVIF. **Sin PDF**.
-- Rescate angular por región (verticales + diagonales); `orientation` en grados.
-- Export: JSON (con `reading_order`), Markdown, CSV, TXT, PNG anotado.
-- Detalle: [docs/PRODUCT.md](docs/PRODUCT.md). Ejemplo JSON: [docs/examples/ocr-result.example.json](docs/examples/ocr-result.example.json).
+- Motor **PP-OCRv6 medium** fijo.
+- Formatos de imagen: PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, PPM, AVIF. **Sin PDF**.
+- Rescate angular por región; export JSON (`reading_order`), Markdown, CSV, TXT, PNG anotado.
+- Ejemplo JSON: [docs/examples/ocr-result.example.json](docs/examples/ocr-result.example.json).
 
 ## Checklist e2e manual
 
@@ -83,22 +76,6 @@ Con backend y frontend arriba, subí y corré **Run** (medium):
 | Export **md** / **json** | Descargables y legibles |
 
 También: `cd frontend && npm run build`.
-
-## Continuidad (otra PC / Linux)
-
-```bash
-git clone https://github.com/javi2481/idp-ocr-studio.git
-cd idp-ocr-studio
-git pull   # HEAD esperado: main al día con origin
-# Engram (opcional): engram import engram-export.json  — solo memorias de este proyecto
-cd backend && python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cd ../frontend && npm install
-cd .. && ./scripts/dev.sh
-```
-
-- `engram-export.json` / `.engram/` — memorias **solo** de idp-ocr-studio (sin secretos de otros repos).
-- `.cursor/` — skills y agents del flujo de desarrollo.
 
 ## Stack
 

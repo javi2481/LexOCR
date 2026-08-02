@@ -158,6 +158,6 @@ def _build_result(
         confidence_avg=round(sum(confs) / len(confs), 3) if confs else 0.0,
         regions_count=len(regions),
         low_confidence_count=len([c for c in confs if c < thr]),
-        regions=regions, width=width, height=height, ocr_mode=options.mode,
-        ocr_tier=options.tier, conf_threshold=thr,
+        regions=regions, width=width, height=height,
+        ocr_mode="fast", ocr_tier="medium", conf_threshold=thr,
     )

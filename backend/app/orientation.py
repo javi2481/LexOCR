@@ -5,7 +5,6 @@ from typing import Any
 from PIL import Image
 
 from .ocr import get_recognizer
-from .schemas import OcrTier
 
 # PaddleOCR endereza el recorte solo si alto/ancho >= 1.5 (crop_image_regions.py), así
 # que las palabras verticales por debajo de ese umbral llegan al reconocedor acostadas.
@@ -165,7 +164,6 @@ def _rescue_oriented_lines(
     path: str,
     lines: list[tuple[list, tuple[str, float]]],
     textline_angles: list[int],
-    tier: OcrTier,
 ) -> tuple[list[tuple[list, tuple[str, float]]], list[float]]:
     """Endereza recortes (verticales y diagonales) y elige la lectura de mayor confianza.
 
@@ -204,7 +202,7 @@ def _rescue_oriented_lines(
             owners.append((i, angle))
     if not crops:
         return lines, orientations
-    predictions = get_recognizer(tier).predict(crops, batch_size=RESCUE_BATCH_SIZE)
+    predictions = get_recognizer().predict(crops, batch_size=RESCUE_BATCH_SIZE)
     best: dict[int, tuple[str, float, float]] = {}
     for (i, angle), out in zip(owners, predictions):
         text = str(out.get("rec_text", "") or "")

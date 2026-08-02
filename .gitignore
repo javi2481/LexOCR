@@ -16,9 +16,12 @@ dist/
 *.pem
 credentials.json
 secrets/
-# Local AI runtime state
+# Local AI runtime / agent tooling (not product)
 .atl/
 .gstack/
+.cursor/
+.engram/
+engram-export.json
 # Generated OCR / e2e artifacts
 artifacts/*
 !artifacts/.gitkeep

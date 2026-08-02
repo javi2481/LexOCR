@@ -1,9 +1,4 @@
-export type OcrMode = "fast" | "document";
-export type OcrTier = "tiny" | "small" | "medium";
-
 export type InferOptions = {
-  mode: OcrMode;
-  tier: OcrTier;
   conf_threshold: number;
   text_det_box_thresh?: number;
   text_det_thresh?: number;
@@ -32,8 +27,8 @@ export type OCRResult = {
   regions: Region[];
   width: number;
   height: number;
-  ocr_mode?: OcrMode;
-  ocr_tier?: OcrTier;
+  ocr_mode?: string;
+  ocr_tier?: string;
   conf_threshold?: number;
 };
 

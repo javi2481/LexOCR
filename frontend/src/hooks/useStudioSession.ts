@@ -10,22 +10,10 @@ import {
 import { isAcceptedFile, needsServerPreview } from "../lib/files";
 import type { HealthInfo, ImageItem, InferOptions } from "../types/ocr";
 
-const OCR_LS_KEY = "ocr_options";
-
-function loadOcrOptions(): InferOptions {
-  try {
-    const raw = localStorage.getItem(OCR_LS_KEY);
-    if (!raw) return { ...DEFAULT_INFER_OPTIONS };
-    return { ...DEFAULT_INFER_OPTIONS, tier: "medium" };
-  } catch {
-    return { ...DEFAULT_INFER_OPTIONS, tier: "medium" };
-  }
-}
-
 export function useStudioSession() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [ocrOptions] = useState<InferOptions>(() => loadOcrOptions());
+  const [ocrOptions] = useState<InferOptions>(() => ({ ...DEFAULT_INFER_OPTIONS }));
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("Infiriendo…");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -41,10 +29,6 @@ export function useStudioSession() {
     busyElapsedSec < 60
       ? `${busyElapsedSec}s`
       : `${Math.floor(busyElapsedSec / 60)}m ${busyElapsedSec % 60}s`;
-
-  useEffect(() => {
-    localStorage.setItem(OCR_LS_KEY, JSON.stringify(ocrOptions));
-  }, [ocrOptions]);
 
   useEffect(() => {
     if (!busy) {

@@ -2,11 +2,11 @@
 
 ## Qué hace
 
-Imágenes de prueba versionadas para smoke manual y e2e local.
+Imágenes versionadas para smoke manual: OCR + orientación + export.
 
 ## Entrada / salida
 
-Entrada: archivos de esta carpeta. Salida: respuesta de `/upload` + `/infer` (JSON con regiones y `orientation`).
+Entrada: archivos de esta carpeta. Salida esperada: `/upload` + `/infer` → JSON con regiones y `orientation`.
 
 ## Cómo probar
 
@@ -14,10 +14,8 @@ Con el backend en `:8100`:
 
 ```bash
 curl -F "file=@tests/fixtures/images/poster.avif" http://localhost:8100/upload
-# luego POST /infer/{image_id} con {"mode":"fast","tier":"medium","conf_threshold":0.9}
+# luego POST /infer/{image_id} con {"conf_threshold":0.9}
 ```
-
-## Decisiones clave
 
 | Archivo | Qué valida |
 |---------|------------|
@@ -26,13 +24,11 @@ curl -F "file=@tests/fixtures/images/poster.avif" http://localhost:8100/upload
 | `nube-manzana.png` | Nube densa con diagonales |
 | `nube-corazon.jpeg` | Nube con muchas orientaciones |
 
-Nombres sin espacios para scripts y docs multiplataforma.
-
 ## Qué no hace
 
-No incluye PDFs ni resultados OCR generados (van a `artifacts/`).
+No incluye PDFs ni resultados OCR generados (van a `artifacts/` o uploads locales).
 
 ## Archivos relacionados
 
-- [docs/PRODUCT.md](../../../docs/PRODUCT.md)
-- [backend/README.md](../../../backend/README.md)
+- [../../../docs/PRODUCT.md](../../../docs/PRODUCT.md)
+- [../../../README.md](../../../README.md)

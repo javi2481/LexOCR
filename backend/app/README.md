@@ -1,22 +1,28 @@
 # Paquete `app`
 
+## Qué hace
+
+Orquesta PP-OCRv6 medium: carga de motor, predict, parsing y rescate de texto vertical/diagonal.
+
 ## Módulos
 
-- `main.py`: entorno PaddleX, ciclo de vida, CORS y creación de FastAPI.
-- `routes.py`: registro de los endpoints HTTP.
-- `schemas.py`: modelos Pydantic y tipos de opciones OCR.
-- `storage.py`: rutas de archivos, validación y conversión a PNG.
-- `ocr.py`: dispositivo, cachés, motores y ejecución de PaddleOCR.
-- `parsing.py`: normalización de respuestas y construcción del resultado.
-- `orientation.py`: segundo pase para texto vertical o diagonal.
+- `main.py` — entorno PaddleX, lifespan, CORS, FastAPI
+- `routes.py` — endpoints HTTP
+- `schemas.py` — Pydantic (`InferOptions` sin selector de tier/mode)
+- `storage.py` — validación y PNG
+- `ocr.py` — device, motor único medium, predict
+- `parsing.py` — normaliza salida Paddle → `OCRResult`
+- `orientation.py` — segundo pase vertical/diagonal
 
 ## Orientación y rescate
 
-PaddleOCR solo endereza automáticamente un recorte cuando su relación
-alto/ancho es al menos 1.5, y su clasificador de línea distingue únicamente
-0°/180°. El rescate rectifica cada cuadrilátero y prueba rotaciones verticales;
-para regiones de baja confianza o gran área también barre ángulos diagonales.
+Paddle solo clasifica línea 0°/180° y endereza crops muy altos. El rescate estima ángulo en el crop (`minAreaRect`), barre ±7.5/15 (y fallback de grilla) y reemplaza el texto solo si mejora la confianza (margen 0.02 en diagonales).
 
-El texto original solo se reemplaza cuando el reconocedor del segundo pase
-mejora la confianza por el margen configurado. Si el rescate falla, la ruta
-conserva sin cambios el resultado principal de PaddleOCR.
+## Qué no hace
+
+No expone selectores tiny/small ni mode document; el motor está fijo en medium.
+
+## Archivos relacionados
+
+- [../README.md](../README.md)
+- [../../docs/PRODUCT.md](../../docs/PRODUCT.md)
