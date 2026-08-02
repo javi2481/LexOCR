@@ -5,7 +5,9 @@
 | Doc | Contenido |
 |-----|-----------|
 | [PRODUCT.md](PRODUCT.md) | Misión y alcance: imagen/PDF/TIFF → OCR → formatos LLM |
+| [V2_BAIDU_VLM.md](V2_BAIDU_VLM.md) | Plan v2: Unlimited-OCR + Qianfan-OCR (investigación oficial; sin tocar v1) |
 | [examples/ocr-result.example.json](examples/ocr-result.example.json) | Forma del JSON de export (LLM-ready; campos de página opcionales) |
+| [research/](research/) | Dumps Parallel (HF Baidu / Unlimited / Qianfan) |
 
 ## READMEs de capacidad
 

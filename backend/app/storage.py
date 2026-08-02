@@ -29,7 +29,7 @@ ALLOWED_EXT = {
 IMAGE_KINDS = frozenset(
     {"png", "jpeg", "gif", "bmp", "webp", "avif", "ico", "ppm"}
 )
-# Documentos multipágina vía engine PP-OCRv6 documento.
+# Documentos multipágina: rasterizar a PNG; OCR vía /infer por página.
 DOCUMENT_KINDS = frozenset({"pdf", "tiff"})
 MAGIC_PREFIXES = (
     (b"%PDF", "pdf"),
@@ -140,6 +140,35 @@ def _tiff_frame_to_png(path: Path, frame_index: int, image_id: str) -> Path:
         frame = img.convert("RGB") if img.mode != "RGB" else img.copy()
         frame.save(out, format="PNG")
     return out
+
+
+def _pdf_page_count(path: Path) -> int:
+    """Cuenta páginas PDF vía pypdfium2 (dep. transitiva de PaddleOCR)."""
+    import pypdfium2 as pdfium
+
+    doc = pdfium.PdfDocument(str(path))
+    try:
+        return len(doc)
+    finally:
+        doc.close()
+
+
+def _pdf_page_to_png(path: Path, page_index: int, image_id: str, *, scale: float = 2.0) -> Path:
+    """Rasteriza una página PDF a PNG (scale=2 ≈ 144 DPI)."""
+    import pypdfium2 as pdfium
+
+    out = UPLOAD_DIR / f"{image_id}.png"
+    doc = pdfium.PdfDocument(str(path))
+    try:
+        if page_index < 0 or page_index >= len(doc):
+            raise HTTPException(400, f"Página {page_index + 1} fuera de rango")
+        page = doc[page_index]
+        bitmap = page.render(scale=scale)
+        pil = bitmap.to_pil().convert("RGB")
+        pil.save(out, format="PNG")
+        return out
+    finally:
+        doc.close()
 
 
 def _array_to_png(arr: Any, image_id: str) -> Path | None:

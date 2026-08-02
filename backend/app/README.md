@@ -7,17 +7,17 @@ Orquesta PP-OCRv6 medium: carga de motors (escena / documento), predict multipá
 ## Módulos
 
 - `main.py` — entorno PaddleX, lifespan, CORS, FastAPI
-- `routes.py` — endpoints HTTP; upload documento → N páginas
+- `routes.py` — endpoints HTTP; upload documento → N páginas pending (OCR vía `/infer`)
 - `schemas.py` — Pydantic (`InferOptions`, `OCRResult` con `page_index` / `page_count`)
-- `storage.py` — formatos (imagen + PDF/TIFF), PNG, tope `MAX_PAGES=50`
-- `ocr.py` — device, `get_ocr` / `get_ocr_document`, predict, preview de página
+- `storage.py` — formatos (imagen + PDF/TIFF), PNG, raster PDF (`pypdfium2`), tope `MAX_PAGES=50`
+- `ocr.py` — device, `get_ocr` / `get_ocr_document` (reusa escena), predict, preview de página
 - `parsing.py` — normaliza salida Paddle → `OCRResult`
 - `orientation.py` — segundo pase vertical/diagonal
 
 ## Engines
 
 - **Escena** (`get_ocr`): sin orientation/unwarping de página.
-- **Documento** (`get_ocr_document`): `use_doc_orientation_classify` + `use_doc_unwarping` ON.
+- **Documento** (`get_ocr_document`): reusa el engine de escena (sin doc_ori/UVDoc; predict nativo pagina PDF/TIFF).
 - Preview de página: imagen del Result Paddle / `save_to_img`; TIFF fallback Pillow si `predict` no pagina.
 
 ## Orientación y rescate

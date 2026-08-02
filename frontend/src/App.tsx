@@ -6,13 +6,16 @@ import {
   type CSSProperties,
   type DragEvent,
 } from "react";
+import { DocumentView } from "./components/DocumentView";
 import { Gallery } from "./components/Gallery";
 import { Header } from "./components/Header";
 import { ImageViewer } from "./components/ImageViewer";
 import { ResultText } from "./components/ResultText";
 import { StatusFooter } from "./components/StatusFooter";
+import { StudioSubbar } from "./components/StudioSubbar";
 import { WordsTray } from "./components/WordsTray";
 import { useStudioSession } from "./hooks/useStudioSession";
+import { exportDocument } from "./lib/exportDocument";
 import { exportResult, type ExportFormat } from "./lib/exportResult";
 import { orderRegions } from "./lib/readingOrder";
 import { buildResultLayout, type OrientedRegion } from "./lib/resultLayout";
@@ -25,6 +28,14 @@ export default function App() {
     selectedId,
     setSelectedId,
     selected,
+    studioView,
+    setStudioView,
+    documentGroups,
+    activeGroup,
+    isMultipage,
+    consolidated,
+    selectPrevInGroup,
+    selectNextInGroup,
     ocrOptions,
     busy,
     busyLabel,
@@ -96,13 +107,24 @@ export default function App() {
   );
 
   const copyCleanText = async () => {
-    if (!cleanText) return;
-    await navigator.clipboard.writeText(cleanText);
+    const text =
+      studioView === "document" ? consolidated?.cleanText ?? "" : cleanText;
+    if (!text) return;
+    if (studioView === "document" && !consolidated?.isComplete) return;
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };
 
   const handleExport = (format: ExportFormat) => {
+    if (studioView === "document") {
+      if (!consolidated?.isComplete || !activeGroup) return;
+      exportDocument(format, {
+        filename: activeGroup.label,
+        consolidated,
+      });
+      return;
+    }
     if (!selected?.result) return;
     exportResult(format, {
       result: selected.result,
@@ -144,6 +166,9 @@ export default function App() {
       : "var(--surface)",
   };
   const trayRegions = selected?.result?.regions ?? [];
+  const pageIndexInGroup = activeGroup
+    ? activeGroup.members.findIndex((m) => m.localId === selectedId)
+    : -1;
 
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--bg)", color: "var(--text)" }}>
@@ -159,100 +184,129 @@ export default function App() {
         images={images}
         selected={selected}
         busy={busy}
-        progressTotal={progress.total}
-        theme={theme}
-        onRunSelected={runSelected}
-        onRunAll={runAll}
-        onClear={handleClear}
-        onExport={handleExport}
-        onToggleTheme={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
-      />
-      <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:flex-row">
-        <Gallery
-          images={images}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onRemove={removeOne}
-          onAdd={openFilePicker}
-        />
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-2">
-          <ImageViewer
-            selected={selected}
-            dragOver={dragOver}
-            dropHandlers={dropHandlers}
-            emptyDropStyle={emptyDropStyle}
-            onOpenFilePicker={openFilePicker}
-            imgWrapRef={imgWrapRef}
-            zoom={zoom}
-            onZoomChange={setZoom}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            displaySize={displaySize}
-            onImageLoad={(natural, display) => {
-              setNaturalSize(natural);
-              setDisplaySize(display);
-            }}
-            scaleX={scaleX}
-            scaleY={scaleY}
-            hoveredRegion={hoveredRegion}
-            onHoveredRegionChange={setHoveredRegion}
-            onScrollToRegion={scrollToRegion}
-            busyLabel={busyLabel}
-            progressIndeterminate={progressIndeterminate}
-            progressPct={progressPct}
-            progress={progress}
-            busyTimeLabel={busyTimeLabel}
-          />
-          <ResultText
-            selected={selected}
-            selectedId={selectedId}
-            busy={busy}
-            dragOver={dragOver}
-            dropHandlers={dropHandlers}
-            emptyDropStyle={emptyDropStyle}
-            onOpenFilePicker={openFilePicker}
-            cleanText={cleanText}
-            copied={copied}
-            onCopy={copyCleanText}
-            busyLabel={busyLabel}
-            progressIndeterminate={progressIndeterminate}
-            progressPct={progressPct}
-            progress={progress}
-            busyTimeLabel={busyTimeLabel}
-            resultLayout={resultLayout}
-            resultZoom={resultZoom}
-            onResultZoomChange={setResultZoom}
-            viewMode={viewMode}
-            hoveredRegion={hoveredRegion}
-            onHoveredRegionChange={setHoveredRegion}
-            onScrollToRegion={scrollToRegion}
-            confThreshold={ocrOptions.conf_threshold}
-          />
-        </div>
-      </div>
-      <WordsTray
-        selected={selected}
-        regions={trayRegions}
-        open={wordsOpen}
-        onToggle={() => setWordsOpen((value) => !value)}
-        busy={busy}
-        busyLabel={busyLabel}
-        busyTimeLabel={busyTimeLabel}
-        hoveredRegion={hoveredRegion}
-        onHoveredRegionChange={setHoveredRegion}
-        onScrollToRegion={scrollToRegion}
-        onUpdateRegionText={updateRegionText}
-        regionRefs={regionRefs}
-        confThreshold={ocrOptions.conf_threshold}
-      />
-      <StatusFooter
-        images={images}
-        busy={busy}
         busyLabel={busyLabel}
         busyTimeLabel={busyTimeLabel}
         progress={progress}
         progressPct={progressPct}
         progressIndeterminate={progressIndeterminate}
+        theme={theme}
+        studioView={studioView}
+        consolidated={consolidated}
+        canExportDocument={!!consolidated?.isComplete}
+        onRunSelected={runSelected}
+        onRunAll={runAll}
+        onClear={handleClear}
+        onExport={handleExport}
+        onCopy={copyCleanText}
+        copied={copied}
+        onToggleTheme={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+      />
+      <div className="flex min-h-0 flex-1 flex-col gap-0 p-2 md:flex-row md:gap-2">
+        <Gallery
+          groups={documentGroups}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onRemove={removeOne}
+          onAdd={openFilePicker}
+        />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border" style={{ borderColor: "var(--border)" }}>
+          {isMultipage && activeGroup ? (
+            <StudioSubbar
+              pageIndex={Math.max(0, pageIndexInGroup)}
+              pageCount={activeGroup.members.length}
+              studioView={studioView}
+              onStudioViewChange={setStudioView}
+              onPrev={selectPrevInGroup}
+              onNext={selectNextInGroup}
+            />
+          ) : null}
+          {studioView === "document" && consolidated && activeGroup ? (
+            <DocumentView
+              label={activeGroup.label}
+              consolidated={consolidated}
+              copied={copied}
+              onCopy={copyCleanText}
+              onExport={handleExport}
+            />
+          ) : (
+            <>
+              <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-2">
+                <ImageViewer
+                  selected={selected}
+                  dragOver={dragOver}
+                  dropHandlers={dropHandlers}
+                  emptyDropStyle={emptyDropStyle}
+                  onOpenFilePicker={openFilePicker}
+                  imgWrapRef={imgWrapRef}
+                  zoom={zoom}
+                  onZoomChange={setZoom}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  displaySize={displaySize}
+                  onImageLoad={(natural, display) => {
+                    setNaturalSize(natural);
+                    setDisplaySize(display);
+                  }}
+                  scaleX={scaleX}
+                  scaleY={scaleY}
+                  hoveredRegion={hoveredRegion}
+                  onHoveredRegionChange={setHoveredRegion}
+                  onScrollToRegion={scrollToRegion}
+                  busyLabel={busyLabel}
+                  progressIndeterminate={progressIndeterminate}
+                  progressPct={progressPct}
+                  progress={progress}
+                  busyTimeLabel={busyTimeLabel}
+                />
+                <ResultText
+                  selected={selected}
+                  selectedId={selectedId}
+                  busy={busy}
+                  dragOver={dragOver}
+                  dropHandlers={dropHandlers}
+                  emptyDropStyle={emptyDropStyle}
+                  onOpenFilePicker={openFilePicker}
+                  cleanText={cleanText}
+                  copied={copied}
+                  onCopy={copyCleanText}
+                  copyLabel="Copiar página"
+                  busyLabel={busyLabel}
+                  progressIndeterminate={progressIndeterminate}
+                  progressPct={progressPct}
+                  progress={progress}
+                  busyTimeLabel={busyTimeLabel}
+                  resultLayout={resultLayout}
+                  resultZoom={resultZoom}
+                  onResultZoomChange={setResultZoom}
+                  viewMode={viewMode}
+                  hoveredRegion={hoveredRegion}
+                  onHoveredRegionChange={setHoveredRegion}
+                  onScrollToRegion={scrollToRegion}
+                  confThreshold={ocrOptions.conf_threshold}
+                />
+              </div>
+              <WordsTray
+                selected={selected}
+                regions={trayRegions}
+                open={wordsOpen}
+                onToggle={() => setWordsOpen((value) => !value)}
+                busy={busy}
+                busyLabel={busyLabel}
+                busyTimeLabel={busyTimeLabel}
+                hoveredRegion={hoveredRegion}
+                onHoveredRegionChange={setHoveredRegion}
+                onScrollToRegion={scrollToRegion}
+                onUpdateRegionText={updateRegionText}
+                regionRefs={regionRefs}
+                confThreshold={ocrOptions.conf_threshold}
+              />
+            </>
+          )}
+        </div>
+      </div>
+      <StatusFooter
+        images={images}
+        busy={busy}
         lastMs={lastMs}
         health={health}
       />

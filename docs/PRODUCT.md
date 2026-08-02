@@ -9,7 +9,7 @@ Extraer texto de **imágenes y documentos** (PDF / TIFF multipágina) y exportar
 | Versión | Estado | Motor |
 |---------|--------|--------|
 | **v1** (este repo) | **Cerrada** (2026-07-30) + PDF/TIFF nativo | PP-OCRv6 medium + rescate angular |
-| **v2** (próxima) | Planificada | **VLM** (vision-language); no seguir exprimiendo det+rec clásico |
+| **v2** (próxima) | Planificada | **VLM** (vision-language); no seguir exprimiendo det+rec clásico — plan candidatos Baidu: [V2_BAIDU_VLM.md](V2_BAIDU_VLM.md) |
 
 ## Qué hace (v1)
 
@@ -43,7 +43,7 @@ Extraer texto de **imágenes y documentos** (PDF / TIFF multipágina) y exportar
 - Orquestar la API oficial Paddle 3.x (`text_det_*`, `dt_polys`); no inventar motores.  
 - Multipágina: nativo PP-OCRv6; sin rasterizar PDF a mano.  
 - **HPI** y **Official API** = futuro opcional (token local en `.env`, no usado por el pipeline local).  
-- **v2 = VLM**: fin de iteración del pipeline clásico sobre nubes/diagonales.  
+- **v2 = VLM**: fin de iteración del pipeline clásico sobre nubes/diagonales. Candidatos Baidu documentados en [V2_BAIDU_VLM.md](V2_BAIDU_VLM.md) (Unlimited-OCR / Qianfan-OCR); v1 no se modifica.  
 
 ## Cómo validar
 

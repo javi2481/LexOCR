@@ -114,15 +114,12 @@ def get_ocr():
 
 
 def get_ocr_document():
-    """Lazy-init PaddleOCR PP-OCRv6 medium documento (orientation + unwarping ON)."""
-    global _ocr_doc_engine
-    if _ocr_doc_engine is not None:
-        return _ocr_doc_engine
-    _ocr_doc_engine = _create_paddle_ocr(
-        use_doc_orientation_classify=True,
-        use_doc_unwarping=True,
-    )
-    return _ocr_doc_engine
+    """OCR multipágina PDF/TIFF: reusa el engine de escena.
+
+    Evita un segundo PaddleOCR con doc_ori/UVDoc (1GB+ y minutos/página en CPU).
+    El predict nativo de PP-OCRv6 ya pagina PDF/TIFF sin esos preprocesadores.
+    """
+    return get_ocr()
 
 
 def engines_cached_count() -> int:
@@ -231,6 +228,14 @@ def _page_index_of(page: Any, fallback: int) -> int:
     return fallback
 
 
+def _first_image(*values: Any) -> Any | None:
+    """Primera imagen no-None (no usar `or`: arrays numpy no son truthy)."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _extract_page_image(page: Any) -> Any | None:
     """Intenta obtener la imagen de página (post-preprocess) del Result Paddle."""
     candidates: list[Any] = []
@@ -256,7 +261,7 @@ def _extract_page_image(page: Any) -> Any | None:
     for key in ("output_img", "input_img", "doc_preprocessor_res"):
         val = page.get(key) if hasattr(page, "get") else getattr(page, key, None)
         if isinstance(val, dict):
-            candidates.append(val.get("output_img") or val.get("img"))
+            candidates.append(_first_image(val.get("output_img"), val.get("img")))
         elif val is not None:
             candidates.append(val)
 
@@ -279,7 +284,9 @@ def _extract_page_image(page: Any) -> Any | None:
         if cand is None:
             continue
         if isinstance(cand, dict):
-            inner = cand.get("output_img") or cand.get("img") or cand.get("input_img")
+            inner = _first_image(
+                cand.get("output_img"), cand.get("img"), cand.get("input_img"),
+            )
             if inner is not None:
                 return inner
             continue

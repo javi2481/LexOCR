@@ -1,5 +1,6 @@
 """Registro de rutas FastAPI."""
 
+import asyncio
 import time
 import uuid
 from pathlib import Path
@@ -11,14 +12,11 @@ from PIL import Image
 from . import ocr
 from .ocr import (
     _call_predict,
-    _materialize_page_png,
-    _page_index_of,
     _run_paddle,
-    _run_paddle_document,
     get_ocr,
 )
 from .orientation import _rescue_oriented_lines
-from .parsing import _build_result, _parse_paddle_raw
+from .parsing import _build_result
 from .schemas import BatchRequest, InferOptions, OCRResult
 from .storage import (
     ANNOTATED_DIR,
@@ -27,6 +25,8 @@ from .storage import (
     MAX_PAGES,
     _detect_format,
     _normalize_to_png,
+    _pdf_page_count,
+    _pdf_page_to_png,
     _save_original,
     _tiff_frame_count,
     _tiff_frame_to_png,
@@ -46,13 +46,17 @@ def _finalize_page_ocr(
     textline_angles: list[int],
     elapsed_ms: float,
     options: InferOptions,
+    *,
+    rescue: bool = True,
 ) -> OCRResult:
     path = Path(item["path"])
-    try:
-        lines, orientations = _rescue_oriented_lines(str(path), lines, textline_angles)
-    except Exception as exc:
-        print(f"[rescue] skipped: {exc}")
-        orientations = None
+    orientations = None
+    if rescue:
+        try:
+            lines, orientations = _rescue_oriented_lines(str(path), lines, textline_angles)
+        except Exception as exc:
+            print(f"[rescue] skipped: {exc}")
+            orientations = None
     with Image.open(path) as img:
         w, h = img.size
     result = _build_result(
@@ -68,118 +72,73 @@ def _process_document_upload(
     filename: str,
     kind: str,
 ) -> dict:
-    """PDF/TIFF: guardar original → predict documento → N páginas con preview + OCR + rescue."""
-    options = InferOptions()
+    """PDF/TIFF: guardar original → rasterizar páginas a PNG → pages[] pending.
+
+    El OCR corre después vía /infer (Run / Run All) para progreso real por página.
+    """
     parent_id = str(uuid.uuid4())
     original = _save_original(data, parent_id, kind)
-    start = time.time()
 
     try:
-        pages_raw = _run_paddle_document(str(original), options)
-    except Exception as exc:
-        raise HTTPException(500, f"Error OCR documento: {exc}") from exc
-
-    normalized: list[tuple[int, object | None, Path | None]] = []
-
-    # TIFF: si Paddle no pagina, partir frames con Pillow y predecir cada PNG.
-    if kind == "tiff":
-        n_frames = _tiff_frame_count(original)
-        if n_frames > 1 and len(pages_raw) <= 1:
-            for fi in range(min(n_frames, MAX_PAGES + 1)):
-                if fi >= MAX_PAGES:
-                    break
-                frame_id = str(uuid.uuid4())
-                frame_png = _tiff_frame_to_png(original, fi, frame_id)
-                try:
-                    frame_pages = _run_paddle_document(str(frame_png), options)
-                except Exception:
-                    frame_pages = ocr._as_result_list(
-                        _call_predict(get_ocr(), str(frame_png), options)
-                    )
-                page = frame_pages[0] if frame_pages else None
-                normalized.append((fi, page, frame_png))
+        if kind == "pdf":
+            n_pages = _pdf_page_count(original)
         else:
-            normalized = [
-                (_page_index_of(page, i), page, None)
-                for i, page in enumerate(pages_raw)
-            ]
-    else:
-        normalized = [
-            (_page_index_of(page, i), page, None)
-            for i, page in enumerate(pages_raw)
-        ]
+            n_pages = _tiff_frame_count(original)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(400, f"No se pudo leer el documento: {exc}") from exc
 
-    if len(normalized) > MAX_PAGES:
+    if n_pages < 1:
+        raise HTTPException(400, "No se pudo leer ninguna página del documento")
+    if n_pages > MAX_PAGES:
         raise HTTPException(
             400, f"El documento supera el tope de {MAX_PAGES} páginas",
         )
-    if not normalized:
-        raise HTTPException(400, "No se pudo leer ninguna página del documento")
 
-    page_count = len(normalized)
-    elapsed_total = round((time.time() - start) * 1000, 1)
-    per_page_ms = round(elapsed_total / page_count, 1) if page_count else elapsed_total
-
+    page_count = n_pages
     out_pages: list[dict] = []
     first_id: str | None = None
 
-    for page_index, page, pre_png in normalized:
+    for page_index in range(page_count):
         image_id = str(uuid.uuid4())
         if first_id is None:
             first_id = image_id
         display_name = _page_filename(filename, page_index, page_count)
+        try:
+            if kind == "pdf":
+                path = _pdf_page_to_png(original, page_index, image_id)
+            else:
+                path = _tiff_frame_to_png(original, page_index, image_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                500, f"Error al rasterizar página {page_index + 1}: {exc}",
+            ) from exc
 
-        if pre_png is not None and pre_png.exists():
-            # Reutilizar PNG del fallback TIFF; renombrar al image_id.
-            path = Path(pre_png)
-            target = original.parent / f"{image_id}.png"
-            if path.resolve() != target.resolve():
-                try:
-                    path.replace(target)
-                except Exception:
-                    Image.open(path).convert("RGB").save(target, format="PNG")
-                path = target
-        else:
-            path = _materialize_page_png(
-                page,
-                image_id,
-                tiff_path=original if kind == "tiff" else None,
-                frame_index=page_index if kind == "tiff" else 0,
-            )
-
-        lines: list = []
-        angles: list[int] = []
-        if page is not None:
-            lines, angles = _parse_paddle_raw([page])
-
-        item = {
+        store[image_id] = {
             "path": str(path),
             "filename": display_name,
-            "status": "processing",
+            "status": "pending",
             "result": None,
             "source_format": kind,
             "page_index": int(page_index),
             "page_count": page_count,
             "parent_id": parent_id,
             "original_path": str(original),
-            "last_options": options.model_dump(),
+            "last_options": None,
         }
-        store[image_id] = item
-        result = _finalize_page_ocr(
-            image_id, item, lines, angles, per_page_ms, options,
-        )
         out_pages.append({
             "image_id": image_id,
             "page_index": int(page_index),
             "page_count": page_count,
             "filename": display_name,
-            "status": "completed",
+            "status": "pending",
             "preview_url": f"/image/{image_id}",
             "source_format": kind,
-            "result": result.model_dump(),
         })
 
-    # Guardar metadato del original (sin PNG de escena).
     store[parent_id] = {
         "path": str(original),
         "filename": filename,
@@ -188,7 +147,7 @@ def _process_document_upload(
         "source_format": kind,
         "page_count": page_count,
         "is_document_source": True,
-        "last_options": options.model_dump(),
+        "last_options": None,
     }
 
     return {
@@ -302,7 +261,10 @@ def register_routes(app: FastAPI) -> None:
         kind = _detect_format(data, filename, content_type)
 
         if kind in DOCUMENT_KINDS:
-            return _process_document_upload(data, filename, kind)
+            # OCR documento es CPU-bound; no bloquear el event loop (health/API).
+            return await asyncio.to_thread(
+                _process_document_upload, data, filename, kind,
+            )
 
         if kind not in IMAGE_KINDS:
             raise HTTPException(400, "Formato no soportado")
@@ -366,8 +328,11 @@ def register_routes(app: FastAPI) -> None:
             start = time.time()
             lines, textline_angles = _run_paddle(item["path"], options)
             elapsed = round((time.time() - start) * 1000, 1)
+            # Rescue angular: útil en fotos; en PDF/TIFF densos multiplica el tiempo.
+            do_rescue = item.get("source_format") not in DOCUMENT_KINDS
             return _finalize_page_ocr(
                 image_id, item, lines, textline_angles, elapsed, options,
+                rescue=do_rescue,
             )
         except HTTPException:
             raise

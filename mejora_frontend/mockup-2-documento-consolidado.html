@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDP OCR Studio — Documento consolidado (mock)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css">
+<style>
+  :root{
+    --bg:#0b0e14; --surface:#12161f; --surface-raised:#1a1f2b;
+    --border:#232a37; --border-strong:#313a4b;
+    --accent:#6366f1; --accent-text:#a5b4fc; --accent-tint:rgba(99,102,241,.15);
+    --success:#4ade80; --warning:#fbbf24; --warning-tint:rgba(245,158,11,.16);
+    --error:#f87171; --text:#e6e9ef; --text-secondary:#9aa3b2; --text-muted:#5f6b7d;
+    --radius:8px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       padding:24px;display:flex;justify-content:center}
+  .app{width:100%;max-width:760px;border:0.5px solid var(--border);border-radius:12px;
+       overflow:hidden;background:var(--surface);font-size:12px}
+  .sep{flex:1;height:0.5px;background:var(--border)}
+  .pageline{margin:8px 0 6px;display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:10px}
+  .fmt{font-size:11px;color:var(--text-secondary);border:0.5px solid var(--border-strong);border-radius:var(--radius);padding:4px 9px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Cabecera del documento: el toggle está en "Documento" -->
+  <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:0.5px solid var(--border);background:var(--surface-raised)">
+    <i class="ti ti-file-type-pdf" style="font-size:16px;color:var(--error)"></i>
+    <span style="font-size:12px;font-weight:600">Resultados-1T26.pdf</span>
+    <span style="font-size:11px;color:var(--text-secondary)">8 páginas · 312 regiones</span>
+    <div style="margin-left:auto;display:flex;border:0.5px solid var(--border-strong);border-radius:var(--radius);overflow:hidden">
+      <span style="font-size:11px;padding:3px 10px;color:var(--text-secondary)">Página</span>
+      <span style="font-size:11px;padding:3px 10px;background:var(--accent);color:#fff">Documento</span>
+    </div>
+  </div>
+
+  <!-- Métricas agregadas a nivel documento (no por página) -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px;background:var(--bg)">
+    <div style="background:var(--surface);border-radius:var(--radius);padding:12px 14px">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Confianza media del documento</div>
+      <div style="font-size:22px;font-weight:600">94,2%</div>
+    </div>
+    <div style="background:var(--surface);border-radius:var(--radius);padding:12px 14px">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Regiones a revisar</div>
+      <div style="font-size:22px;font-weight:600;color:var(--warning)">11 <span style="font-size:12px;color:var(--text-muted);font-weight:400">en 3 págs</span></div>
+    </div>
+  </div>
+
+  <!-- Las 8 páginas concatenadas en orden de lectura, con separador por página -->
+  <div style="padding:0 12px 12px;background:var(--bg)">
+    <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 16px;font-family:var(--mono);font-size:11px;line-height:1.9;color:var(--text-secondary);max-height:210px;overflow:hidden">
+      <div class="pageline"><span class="sep"></span>página 1<span class="sep"></span></div>
+      <div style="color:var(--text)"># Comunicado de prensa — Resultados 1T26</div>
+      <div>Buenos Aires, 6 de mayo de 2026.</div>
+      <div class="pageline"><span class="sep"></span>página 2<span class="sep"></span></div>
+      <div style="color:var(--text)">## Principales indicadores</div>
+      <div>Ingresos netos: $12.480 M (+23,4%)</div>
+      <div>Margen operativo: 41,2%</div>
+      <div class="pageline"><span class="sep"></span>página 3<span class="sep"></span></div>
+      <div>El resultado operativo del trimestre…</div>
+    </div>
+  </div>
+
+  <!-- Barra de export: el documento entero en un archivo, más copiar-todo para pegar en un prompt -->
+  <div style="display:flex;align-items:center;gap:8px;padding:11px 12px;border-top:0.5px solid var(--border);background:var(--surface-raised)">
+    <span style="font-size:11px;color:var(--text-muted)">Exportar documento completo</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <span class="fmt">MD</span>
+      <span class="fmt">JSON</span>
+      <span class="fmt">TXT</span>
+      <span style="font-size:11px;color:#fff;background:var(--accent);border-radius:var(--radius);padding:5px 12px;display:flex;align-items:center;gap:5px"><i class="ti ti-copy"></i>Copiar todo para LLM</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

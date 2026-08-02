@@ -67,6 +67,8 @@ export type ViewMode = "original" | "boxes" | "text";
 
 export type ImageItem = {
   localId: string;
+  /** Stable document group key. Shared by all pages of one upload; equals localId for loose images. */
+  groupId: string;
   id?: string;
   filename: string;
   status: Status;
@@ -79,3 +81,5 @@ export type ImageItem = {
   page_count?: number;
   source_format?: string;
 };
+
+export type StudioView = "page" | "document";

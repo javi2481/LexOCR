@@ -1,0 +1,91 @@
+{
+  "title": "Baidu Hugging Face → IDP OCR Studio",
+  "generated": "2026-08-02",
+  "method": "parallel-cli search + extract",
+  "source_dumps": [
+    "baidu-hf-search.json",
+    "baidu-hf-extract.json",
+    "baidu-hf-org-catalog.json"
+  ],
+  "project_context": {
+    "v1": "PP-OCRv6 medium classic det+rec + bounding boxes + rescue (cerrada)",
+    "v2": "VLM document parsing → Markdown/JSON LLM-ready"
+  },
+  "verdict": {
+    "v1_integrate": false,
+    "v2_candidates": ["baidu/Unlimited-OCR", "baidu/Qianfan-OCR"],
+    "noise": ["ERNIE-Image", "NAVA", "ERNIE-4.5-VL-424B"]
+  },
+  "models": [
+    {
+      "id": "baidu/Unlimited-OCR",
+      "utility": "high_v2",
+      "params": "~3B BF16",
+      "license": "MIT",
+      "arxiv": "2606.23050",
+      "strengths": [
+        "One-shot long-horizon / multipage PDF → Markdown in one forward pass",
+        "vLLM recipe with NGramPerReqLogitsProcessor; SGLang; Transformers",
+        ">=8GB VRAM cited for BF16; community guides suggest ~12GB+",
+        "Grounding tokens <|ref|> / <|det|> (not same contract as PP-OCR dt_polys)",
+        "Space demo: https://huggingface.co/spaces/baidu/Unlimited-OCR"
+      ],
+      "deploy_notes": [
+        "Prompt must start with literal <image>",
+        "skip_special_tokens=False",
+        "ngram_size=35; window_size=128 single / 1024 multipage",
+        "Docker image: vllm/vllm-openai:unlimited-ocr"
+      ],
+      "urls": {
+        "hf": "https://huggingface.co/baidu/Unlimited-OCR",
+        "vllm_recipe": "https://recipes.vllm.ai/baidu/Unlimited-OCR",
+        "github": "https://github.com/baidu/Unlimited-OCR",
+        "space": "https://huggingface.co/spaces/baidu/Unlimited-OCR"
+      }
+    },
+    {
+      "id": "baidu/Qianfan-OCR",
+      "utility": "high_v2",
+      "params": "~4–5B (card shows 5B params; paper says 4B)",
+      "license": "apache-2.0",
+      "arxiv": "2603.13398",
+      "strengths": [
+        "End-to-end document intelligence: MD, tables, formulas, charts, KIE, VQA",
+        "Layout-as-Thought optional: boxes + element types + reading order",
+        "OmniDocBench v1.5 e2e overall 93.12 (best e2e cited on card)",
+        "192 languages; ~1.024 PPS W8A8 on A100 (vLLM)",
+        "Space: https://huggingface.co/spaces/baidu/Qianfan-OCR-Demo"
+      ],
+      "deploy_notes": [
+        "vllm serve baidu/Qianfan-OCR --trust-remote-code --hf-overrides InternVLChatModel",
+        "enable_thinking for complex layouts"
+      ],
+      "urls": {
+        "hf": "https://huggingface.co/baidu/Qianfan-OCR",
+        "demo": "https://huggingface.co/spaces/baidu/Qianfan-OCR-Demo",
+        "arxiv": "https://arxiv.org/abs/2603.13398"
+      }
+    }
+  ],
+  "org_baidu_hf": {
+    "url": "https://huggingface.co/baidu",
+    "useful_spaces": ["Unlimited OCR", "Qianfan-OCR Demo"],
+    "irrelevant_spaces": ["ERNIE Image", "NAVA"],
+    "note": "Classic PP-OCR weights/collections live under PaddlePaddle org, not baidu headline models"
+  },
+  "ppocr_blog_trap": {
+    "url": "https://huggingface.co/blog/baidu/ppocrv5",
+    "point": "Confirms modular det+rec = precise boxes, less hallucination than VLMs. That lineage is already v1 via PP-OCRv6 medium (PaddlePaddle), not a new baidu-HF drop-in."
+  },
+  "vs_already_researched": [
+    "PaddleOCR-VL-1.6 (pipeline OmniDocBench ~96.3%)",
+    "HPD-Parsing (throughput; Linux/GPU/custom vLLM)",
+    "PP-OCRv6 medium (v1 production)"
+  ],
+  "recommendation": [
+    "Do not change v1 pipeline",
+    "v2 spike A: Unlimited-OCR on BYMA multipage PDFs",
+    "v2 spike B: Qianfan-OCR with Layout-as-Thought vs spatial UI",
+    "Compare vs PaddleOCR-VL-1.6 before choosing motor"
+  ]
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_INFER_OPTIONS,
   getHealth,
@@ -7,10 +7,28 @@ import {
   inferBatch,
   upload,
 } from "../lib/api";
+import { consolidate, consolidateSignature } from "../lib/consolidate";
+import {
+  findActiveGroup,
+  groupImages,
+  isMultipageGroup,
+} from "../lib/documentGroups";
 import { isAcceptedFile, isDocumentFile, needsServerPreview } from "../lib/files";
-import type { HealthInfo, ImageItem, InferOptions, OCRResult, UploadResponse } from "../types/ocr";
+import type {
+  HealthInfo,
+  ImageItem,
+  InferOptions,
+  OCRResult,
+  StudioView,
+  UploadResponse,
+} from "../types/ocr";
 
-function pagesFromUpload(file: File, response: UploadResponse, placeholderLocalId?: string): ImageItem[] {
+function pagesFromUpload(
+  file: File,
+  response: UploadResponse,
+  placeholderLocalId?: string,
+  groupId?: string,
+): ImageItem[] {
   const pages = response.pages?.length
     ? response.pages
     : [
@@ -23,10 +41,12 @@ function pagesFromUpload(file: File, response: UploadResponse, placeholderLocalI
           source_format: response.source_format,
         },
       ];
+  const gid = groupId ?? crypto.randomUUID();
   return pages.map((page, index) => {
     const completed = page.status === "completed" && page.result;
     return {
       localId: index === 0 && placeholderLocalId ? placeholderLocalId : crypto.randomUUID(),
+      groupId: gid,
       id: page.image_id,
       filename: page.filename || response.filename,
       status: (completed ? "completed" : page.status === "error" ? "error" : "pending") as ImageItem["status"],
@@ -44,6 +64,7 @@ function pagesFromUpload(file: File, response: UploadResponse, placeholderLocalI
 export function useStudioSession() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [studioView, setStudioView] = useState<StudioView>("page");
   const [ocrOptions] = useState<InferOptions>(() => ({ ...DEFAULT_INFER_OPTIONS }));
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("Infiriendo…");
@@ -53,6 +74,41 @@ export function useStudioSession() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
 
   const selected = images.find((item) => item.localId === selectedId) ?? null;
+  const documentGroups = useMemo(() => groupImages(images), [images]);
+  const activeGroup = useMemo(
+    () => findActiveGroup(documentGroups, selectedId),
+    [documentGroups, selectedId],
+  );
+  const isMultipage = isMultipageGroup(activeGroup);
+  const consolidateSig = activeGroup
+    ? consolidateSignature(activeGroup.members)
+    : "";
+  const consolidated = useMemo(() => {
+    if (!activeGroup || activeGroup.members.length === 0) return null;
+    return consolidate(activeGroup.members);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content signature, not array identity
+  }, [consolidateSig, activeGroup?.groupId]);
+
+  useEffect(() => {
+    if (!isMultipage && studioView !== "page") {
+      setStudioView("page");
+    }
+  }, [isMultipage, studioView]);
+
+  const selectPrevInGroup = useCallback(() => {
+    if (!activeGroup || !selectedId) return;
+    const idx = activeGroup.members.findIndex((m) => m.localId === selectedId);
+    if (idx <= 0) return;
+    setSelectedId(activeGroup.members[idx - 1].localId);
+  }, [activeGroup, selectedId]);
+
+  const selectNextInGroup = useCallback(() => {
+    if (!activeGroup || !selectedId) return;
+    const idx = activeGroup.members.findIndex((m) => m.localId === selectedId);
+    if (idx < 0 || idx >= activeGroup.members.length - 1) return;
+    setSelectedId(activeGroup.members[idx + 1].localId);
+  }, [activeGroup, selectedId]);
+
   const progressPct =
     progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
   const progressIndeterminate = busy && (progress.total <= 1 || progress.done === 0);
@@ -119,8 +175,10 @@ export function useStudioSession() {
     const next: ImageItem[] = list.map((file) => {
       const localPreview = !needsServerPreview(file);
       const doc = isDocumentFile(file);
+      const localId = crypto.randomUUID();
       return {
-        localId: crypto.randomUUID(),
+        localId,
+        groupId: localId,
         filename: file.name,
         status: doc ? "processing" : "pending",
         previewUrl: localPreview ? URL.createObjectURL(file) : "",
@@ -131,48 +189,96 @@ export function useStudioSession() {
     setImages((previous) => [...previous, ...next]);
     setSelectedId((id) => id ?? next[0].localId);
 
-    next.forEach(async (item) => {
-      if (!needsServerPreview(item.file) && !isDocumentFile(item.file)) return;
+    const toUpload = next.filter(
+      (item) => needsServerPreview(item.file) || isDocumentFile(item.file),
+    );
+    const docs = toUpload.filter((item) => isDocumentFile(item.file));
+    const trackDocs = docs.length > 0;
+    if (trackDocs) {
+      setBusy(true);
+      setBusyLabel(
+        docs.length === 1
+          ? "Preparando documento…"
+          : `Preparando ${docs.length} documentos…`,
+      );
+      setProgress({ done: 0, total: 1 });
+    }
+
+    void (async () => {
       try {
-        const response = await upload(item.file);
-        const pages = pagesFromUpload(item.file, response, item.localId);
-        if (item.revokePreview && item.previewUrl.startsWith("blob:")) {
-          URL.revokeObjectURL(item.previewUrl);
-        }
-        if (pages.length > 1 || isDocumentFile(item.file)) {
-          replacePlaceholderWithPages(item.localId, pages);
-          const lastCompleted = [...pages].reverse().find((p) => p.result);
-          if (lastCompleted?.result) setLastMs(lastCompleted.result.inference_time_ms);
-        } else {
-          const page = pages[0];
-          setImages((previous) =>
-            previous.map((image) =>
-              image.localId === item.localId
-                ? {
-                    ...image,
-                    id: page.id,
-                    previewUrl: page.previewUrl,
-                    revokePreview: false,
-                    page_index: page.page_index,
-                    page_count: page.page_count,
-                    source_format: page.source_format,
+        for (const item of toUpload) {
+          const isDoc = isDocumentFile(item.file);
+          try {
+            if (isDoc) {
+              setBusyLabel(`Rasterizando ${item.filename}…`);
+            }
+            const response = await upload(item.file);
+            const pages = pagesFromUpload(item.file, response, item.localId, item.groupId);
+            if (item.revokePreview && item.previewUrl.startsWith("blob:")) {
+              URL.revokeObjectURL(item.previewUrl);
+            }
+            if (pages.length > 1 || isDoc) {
+              replacePlaceholderWithPages(item.localId, pages);
+              if (isDoc) {
+                setProgress({ done: 0, total: pages.length });
+                for (let i = 0; i < pages.length; i++) {
+                  const page = pages[i];
+                  if (!page.id) continue;
+                  setBusyLabel(`Infiriendo p.${i + 1}/${pages.length}…`);
+                  updateImage(page.localId, { status: "processing", error: undefined });
+                  try {
+                    const result = await infer(page.id, ocrOptions);
+                    updateImage(page.localId, {
+                      status: "completed",
+                      result,
+                      id: page.id,
+                    });
+                    setLastMs(result.inference_time_ms);
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : "Error";
+                    updateImage(page.localId, { status: "error", error: message });
                   }
-                : image,
-            ),
-          );
+                  setProgress({ done: i + 1, total: pages.length });
+                }
+              }
+            } else {
+              const page = pages[0];
+              setImages((previous) =>
+                previous.map((image) =>
+                  image.localId === item.localId
+                    ? {
+                        ...image,
+                        id: page.id,
+                        groupId: page.groupId,
+                        previewUrl: page.previewUrl,
+                        revokePreview: false,
+                        page_index: page.page_index,
+                        page_count: page.page_count,
+                        source_format: page.source_format,
+                      }
+                    : image,
+                ),
+              );
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Error al subir";
+            setImages((previous) =>
+              previous.map((image) =>
+                image.localId === item.localId
+                  ? { ...image, status: "error", error: message }
+                  : image,
+              ),
+            );
+          }
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Error al subir";
-        setImages((previous) =>
-          previous.map((image) =>
-            image.localId === item.localId
-              ? { ...image, status: "error", error: message }
-              : image,
-          ),
-        );
+      } finally {
+        if (trackDocs) {
+          setBusy(false);
+          setBusyLabel("Infiriendo…");
+        }
       }
-    });
-  }, []);
+    })();
+  }, [ocrOptions]);
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
@@ -209,7 +315,7 @@ export function useStudioSession() {
         );
         const response = await upload(item.file);
         if (response.pages && response.pages.length > 1) {
-          const pages = pagesFromUpload(item.file, response, item.localId);
+          const pages = pagesFromUpload(item.file, response, item.localId, item.groupId);
           if (item.revokePreview && item.previewUrl.startsWith("blob:")) {
             URL.revokeObjectURL(item.previewUrl);
           }
@@ -287,7 +393,7 @@ export function useStudioSession() {
           updateImage(current.localId, { status: "processing", error: undefined });
           const response = await upload(current.file);
           if (response.pages && response.pages.length > 1) {
-            const pages = pagesFromUpload(current.file, response, current.localId);
+            const pages = pagesFromUpload(current.file, response, current.localId, current.groupId);
             if (current.revokePreview && current.previewUrl.startsWith("blob:")) {
               URL.revokeObjectURL(current.previewUrl);
             }
@@ -416,6 +522,14 @@ export function useStudioSession() {
     selectedId,
     setSelectedId,
     selected,
+    studioView,
+    setStudioView,
+    documentGroups,
+    activeGroup,
+    isMultipage,
+    consolidated,
+    selectPrevInGroup,
+    selectNextInGroup,
     ocrOptions,
     busy,
     busyLabel,

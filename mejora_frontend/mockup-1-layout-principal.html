@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDP OCR Studio — Layout principal (mock)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css">
+<style>
+  /* ===== Tokens: mapeados a los nombres de tu app. Cambiá acá para reusar tu tema real. ===== */
+  :root{
+    --bg:#0b0e14;              /* page */
+    --surface:#12161f;         /* paneles */
+    --surface-raised:#1a1f2b;  /* inputs / raised */
+    --border:#232a37;
+    --border-strong:#313a4b;
+    --accent:#6366f1;          /* indigo */
+    --accent-text:#a5b4fc;
+    --accent-tint:rgba(99,102,241,.15);
+    --success:#4ade80;
+    --warning:#fbbf24;
+    --warning-tint:rgba(245,158,11,.16);
+    --error:#f87171;
+    --text:#e6e9ef;
+    --text-secondary:#9aa3b2;
+    --text-muted:#5f6b7d;
+    --radius:8px;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       padding:24px;display:flex;justify-content:center}
+  .app{width:100%;max-width:900px;border:0.5px solid var(--border);border-radius:12px;
+       overflow:hidden;background:var(--surface);font-size:12px}
+  .dot{width:6px;height:6px;border-radius:50%}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Topbar: la acción "Copiar para LLM" vive acá arriba porque es el objetivo del producto, no un export más -->
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:0.5px solid var(--border);background:var(--surface-raised)">
+    <div style="width:22px;height:22px;border-radius:6px;background:var(--accent-tint);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px">IDP</div>
+    <span style="font-weight:600;font-size:13px">IDP OCR Studio</span>
+    <span style="font-size:11px;color:var(--text-secondary);border:0.5px solid var(--border);border-radius:var(--radius);padding:2px 7px">PP-OCRv6 · medium</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;color:#fff;background:var(--accent);border-radius:var(--radius);padding:4px 10px;display:flex;align-items:center;gap:5px"><i class="ti ti-player-play"></i>Run</span>
+      <span style="font-size:11px;color:var(--text-secondary);border:0.5px solid var(--border-strong);border-radius:var(--radius);padding:4px 10px">Run all</span>
+      <span style="width:0.5px;height:18px;background:var(--border)"></span>
+      <span style="font-size:11px;color:var(--text-secondary);border:0.5px solid var(--border-strong);border-radius:var(--radius);padding:4px 8px;display:flex;align-items:center;gap:4px"><i class="ti ti-sparkles"></i>Copiar para LLM</span>
+      <i class="ti ti-moon" style="color:var(--text-muted);font-size:16px"></i>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:170px 1fr;min-height:360px">
+
+    <!-- Rail-árbol: un PDF se agrupa bajo su nombre; cada página trae badge p.x + punto de estado. Mata las "8 miniaturas idénticas" -->
+    <div style="border-right:0.5px solid var(--border);background:var(--bg);padding:10px 8px;display:flex;flex-direction:column;gap:4px">
+      <span style="font-size:11px;color:var(--text-muted);padding:0 4px 4px">Documentos</span>
+
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:var(--radius);color:var(--text-secondary)">
+        <i class="ti ti-chevron-down" style="font-size:14px"></i>
+        <i class="ti ti-file-type-pdf" style="font-size:15px;color:var(--error)"></i>
+        <span style="font-size:11px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Resultados-1T26</span>
+        <span style="font-size:10px;color:var(--text-muted)">8 p</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:2px;padding-left:6px">
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:var(--radius)">
+          <div style="width:20px;height:26px;border-radius:3px;background:var(--surface-raised);border:0.5px solid var(--border)"></div>
+          <span style="font-size:11px;color:var(--text-secondary);flex:1">p.1</span>
+          <span class="dot" style="background:var(--success)"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:var(--radius)">
+          <div style="width:20px;height:26px;border-radius:3px;background:var(--surface-raised);border:0.5px solid var(--border)"></div>
+          <span style="font-size:11px;color:var(--text-secondary);flex:1">p.2</span>
+          <span class="dot" style="background:var(--success)"></span>
+        </div>
+        <!-- página activa: tinte de acento + borde -->
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:var(--radius);background:var(--accent-tint);border:0.5px solid var(--accent)">
+          <div style="width:20px;height:26px;border-radius:3px;background:var(--surface-raised);border:0.5px solid var(--accent)"></div>
+          <span style="font-size:11px;color:var(--accent-text);font-weight:600;flex:1">p.3</span>
+          <span class="dot" style="background:var(--warning)"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:var(--radius)">
+          <div style="width:20px;height:26px;border-radius:3px;background:var(--surface-raised);border:0.5px solid var(--border)"></div>
+          <span style="font-size:11px;color:var(--text-muted);flex:1">p.4</span>
+          <span class="dot" style="background:var(--border-strong)"></span>
+        </div>
+        <span style="font-size:10px;color:var(--text-muted);padding:2px 6px">+ 4 más</span>
+      </div>
+
+      <!-- imagen suelta al nivel superior -->
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;margin-top:4px;border-radius:var(--radius);color:var(--text-secondary)">
+        <span style="width:14px"></span>
+        <i class="ti ti-photo" style="font-size:15px"></i>
+        <span style="font-size:11px;color:var(--text);flex:1">poster.png</span>
+        <span class="dot" style="background:var(--success)"></span>
+      </div>
+
+      <div style="margin-top:auto;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px;border:0.5px dashed var(--border-strong);border-radius:var(--radius);color:var(--text-muted);font-size:11px">
+        <i class="ti ti-plus"></i> Agregar
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column">
+
+      <!-- Subbar: nav de página + toggle Página/Documento + acceso al loop de revisión -->
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:0.5px solid var(--border);background:var(--surface)">
+        <div style="display:flex;align-items:center;gap:4px;color:var(--text-secondary)">
+          <i class="ti ti-chevron-left" style="font-size:15px"></i>
+          <span style="font-size:11px">página <span style="color:var(--text);font-weight:600">3</span> / 8</span>
+          <i class="ti ti-chevron-right" style="font-size:15px"></i>
+        </div>
+        <div style="display:flex;border:0.5px solid var(--border-strong);border-radius:var(--radius);overflow:hidden">
+          <span style="font-size:11px;padding:3px 10px;background:var(--accent);color:#fff">Página</span>
+          <span style="font-size:11px;padding:3px 10px;color:var(--text-secondary)">Documento</span>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;color:var(--warning);background:var(--warning-tint);border-radius:var(--radius);padding:3px 9px">
+          <i class="ti ti-alert-triangle"></i> 4 baja conf.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;flex:1">
+
+        <!-- Panel imagen: baja conf. resaltada en ámbar, igual que en el texto -->
+        <div style="border-right:0.5px solid var(--border);display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:0.5px solid var(--border)">
+            <span style="font-size:11px;color:var(--text-secondary)">Imagen</span>
+            <div style="display:flex;gap:6px;color:var(--text-muted);font-size:14px">
+              <i class="ti ti-square"></i><i class="ti ti-letter-case"></i>
+            </div>
+          </div>
+          <div style="flex:1;padding:12px;display:flex;align-items:center;justify-content:center;background:var(--bg)">
+            <svg viewBox="0 0 180 150" style="width:100%;max-width:220px;height:auto" role="img" aria-label="Vista previa con cajas detectadas">
+              <rect x="0" y="0" width="180" height="150" rx="4" fill="var(--surface-raised)" stroke="var(--border)" stroke-width="0.5"/>
+              <rect x="16" y="14" width="90" height="12" rx="2" fill="none" stroke="var(--success)" stroke-width="1"/>
+              <rect x="16" y="34" width="148" height="9" rx="2" fill="none" stroke="var(--success)" stroke-width="1"/>
+              <rect x="16" y="48" width="148" height="9" rx="2" fill="none" stroke="var(--success)" stroke-width="1"/>
+              <rect x="16" y="72" width="70" height="10" rx="2" fill="none" stroke="var(--warning)" stroke-width="1.4"/>
+              <rect x="96" y="72" width="68" height="10" rx="2" fill="none" stroke="var(--success)" stroke-width="1"/>
+              <rect x="16" y="98" width="148" height="9" rx="2" fill="none" stroke="var(--success)" stroke-width="1"/>
+              <rect x="16" y="112" width="120" height="9" rx="2" fill="none" stroke="var(--success)" stroke-width="1"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Panel salida: ya no "Result Text", es "Texto para LLM". Región de baja conf. resaltada -->
+        <div style="display:flex;flex-direction:column;background:var(--surface)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:0.5px solid var(--border)">
+            <span style="font-size:11px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:5px"><i class="ti ti-sparkles" style="color:var(--accent-text)"></i>Texto para LLM</span>
+            <span style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><i class="ti ti-copy"></i>Copiar</span>
+          </div>
+          <div style="flex:1;padding:12px;font-family:var(--mono);font-size:11px;line-height:1.85;color:var(--text-secondary)">
+            <div style="color:var(--text)">## Resultados 1T26</div>
+            <div>Ingresos netos por servicios</div>
+            <div>alcanzaron $12.480 millones,</div>
+            <div style="background:var(--warning-tint);color:var(--warning);border-radius:3px;display:inline-block;padding:0 3px">un incremento del 23,4%</div>
+            <div>interanual respecto al 1T25.</div>
+            <div style="margin-top:6px;color:var(--text-muted)">El resultado operativo…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

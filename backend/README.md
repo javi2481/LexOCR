@@ -8,7 +8,7 @@ API FastAPI: subir imágenes o PDF/TIFF, ejecutar PP-OCRv6 medium (escena o docu
 
 - **Entrada:** archivo ≤ 20 MB.
   - Imágenes: PNG, JPEG, WEBP, GIF, BMP, ICO, PPM, AVIF → PNG normalizado + infer bajo demanda.
-  - Documentos: **PDF** / **TIFF** → `predict` multipágina (tope 50); respuesta `pages[]` con OCR + preview por página.
+  - Documentos: **PDF** / **TIFF** → rasteriza a PNG por página (tope 50); OCR vía `/infer` (progreso por página en UI).
 - **Salida:** `OCRResult` JSON (regiones, confianza, `orientation`, `page_index`/`page_count` si aplica, `ocr_tier: medium`) o PNG anotado.
 
 ## Ejecución
@@ -26,7 +26,8 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8100
 ## Endpoints
 
 - `GET /health` — device y engines cacheados (escena y/o documento)
-- `POST /upload` — imagen → 1 `image_id`; PDF/TIFF → OCR documento + `pages[]`
+- `POST /upload` — imagen → 1 `image_id` pending; PDF/TIFF → rasteriza páginas (pypdfium2/Pillow) y `pages[]` pending
+- `POST /infer/{id}` / `POST /infer/batch` — OCR por página (progreso real en UI)
 - `GET /image/{image_id}` — PNG de preview (página materializada)
 - `POST /infer/{image_id}` — re-OCR escena + rescue sobre PNG
 - `POST /infer/batch` — lista de ids (omite el origen documento crudo)
@@ -39,8 +40,8 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8100
 |--|--------|----------------------|
 | Modelo | PP-OCRv6 medium | PP-OCRv6 medium |
 | `use_textline_orientation` | True | True |
-| `use_doc_orientation_classify` | False | True |
-| `use_doc_unwarping` | False | True |
+| `use_doc_orientation_classify` | False | False (reusa engine escena) |
+| `use_doc_unwarping` | False | False (UVDoc OFF; demasiado lento en CPU) |
 
 ## Entorno
 

@@ -29,6 +29,7 @@ type ResultTextProps = {
   cleanText: string;
   copied: boolean;
   onCopy: () => void;
+  copyLabel?: string;
   busyLabel: string;
   progressIndeterminate: boolean;
   progressPct: number;
@@ -47,7 +48,7 @@ type ResultTextProps = {
 export function ResultText(props: ResultTextProps) {
   const {
     selected, selectedId, busy, dragOver, dropHandlers, emptyDropStyle,
-    onOpenFilePicker, cleanText, copied, onCopy, busyLabel, progressIndeterminate,
+    onOpenFilePicker, cleanText, copied, onCopy, copyLabel = "Copiar", busyLabel, progressIndeterminate,
     progressPct, progress, busyTimeLabel, resultLayout, resultZoom,
     onResultZoomChange, viewMode, hoveredRegion, onHoveredRegionChange,
     onScrollToRegion, confThreshold,
@@ -55,9 +56,9 @@ export function ResultText(props: ResultTextProps) {
   return (
     <section className="twin-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border-2" style={{ borderColor: dragOver && !selected ? "var(--accent)" : "var(--border)", background: "var(--surface)" }} {...(!selected ? dropHandlers : {})}>
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3" style={{ borderColor: "var(--border)" }}>
-        <span className="flex-1 text-center text-xs font-medium">Result Text</span>
+        <span className="flex-1 text-center text-xs font-medium">Texto para LLM</span>
         <button type="button" disabled={!cleanText} onClick={onCopy} className="rounded-md px-2 py-1 text-xs disabled:opacity-40" style={btnStyle}>
-          {copied ? "Copiado" : "Copiar"}
+          {copied ? "Copiado" : copyLabel}
         </button>
       </div>
       <div
