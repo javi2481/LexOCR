@@ -1,6 +1,6 @@
 # v2 — Plan Baidu VLM (Unlimited-OCR + Qianfan-OCR)
 
-Documento de roadmap para la **v2** del IDP OCR Studio.  
+Documento de roadmap para la **v2** de LexOCR.  
 **Estado:** planificación / investigación. **No** cambia el pipeline v1 (PP-OCRv6 medium).
 
 Hechos técnicos citados solo desde documentación oficial y dumps Parallel en [`research/`](research/). No inventar APIs, VRAM, límites ni formatos.

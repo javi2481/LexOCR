@@ -1,5 +1,5 @@
 {
-  "title": "Baidu Hugging Face → IDP OCR Studio",
+  "title": "Baidu Hugging Face → LexOCR",
   "generated": "2026-08-02",
   "method": "parallel-cli search + extract",
   "source_dumps": [

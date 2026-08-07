@@ -1,4 +1,4 @@
-# IDP OCR Studio — backend
+# LexOCR — backend
 
 ## Qué hace
 

@@ -1,4 +1,4 @@
-"""Aplicación FastAPI de IDP OCR Studio."""
+"""Aplicación FastAPI de LexOCR."""
 
 import os
 from contextlib import asynccontextmanager
@@ -28,7 +28,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="IDP OCR Studio", lifespan=lifespan)
+app = FastAPI(title="LexOCR", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

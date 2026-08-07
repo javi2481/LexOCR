@@ -1,4 +1,4 @@
-# IDP OCR Studio
+# LexOCR
 
 SPA académica para **extraer texto de imágenes y documentos (PDF/TIFF)** y exportarlo a formatos **consumibles por un LLM** (JSON / Markdown / CSV / TXT + PNG anotado).
 

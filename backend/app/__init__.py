@@ -1,1 +1,1 @@
-"""Paquete de la API de IDP OCR Studio."""
+"""Paquete de la API de LexOCR."""

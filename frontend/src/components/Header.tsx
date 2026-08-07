@@ -91,8 +91,8 @@ export function Header({
     <>
       <header className="flex h-12 shrink-0 flex-wrap items-center gap-2 border-b px-3" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: "var(--accent)" }}>IDP</div>
-          <span className="text-sm font-semibold tracking-wide">IDP OCR Studio</span>
+          <div className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: "var(--accent)" }}>LX</div>
+          <span className="text-sm font-semibold tracking-wide">LexOCR</span>
           <span className="rounded px-2 py-0.5 text-[10px] font-medium uppercase" style={{ background: "var(--surface-raised)", color: "var(--text-secondary)", border: "1px solid var(--border)" }} title="Motor PP-OCRv6 medium">
             PP-OCRv6 · medium
           </span>

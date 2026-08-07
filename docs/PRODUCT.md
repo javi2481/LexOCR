@@ -1,4 +1,4 @@
-# Producto — IDP OCR Studio
+# Producto — LexOCR
 
 ## Misión
 
