@@ -6,3 +6,4 @@ paddlepaddle
 pillow
 pillow-avif-plugin
 pydantic
+pypdfium2

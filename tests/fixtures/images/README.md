@@ -8,8 +8,8 @@ Imágenes versionadas para smoke manual: OCR + orientación + export.
 
 Entrada: archivos de esta carpeta (y PDFs/TIFF propios fuera del repo). Salida esperada:
 
-- Imagen: `/upload` + `/infer/{image_id}` → JSON con regiones y `orientation`.
-- PDF/TIFF: `/upload` solo → `pages[]` con OCR ya completado por página.
+- Imagen: `/upload` → `pending` → `/infer/{image_id}` → JSON con regiones y `orientation` (rescue ON).
+- PDF/TIFF: `/upload` → `pages[]` cada una `pending` (PNG rasterizado) → `/infer` por `image_id` (en el studio la UI lo hace sola).
 
 ## Cómo probar
 
@@ -19,8 +19,9 @@ Con el backend en `:8100`:
 curl -F "file=@tests/fixtures/images/poster.avif" http://localhost:8100/upload
 # luego POST /infer/{image_id} con {"conf_threshold":0.9}
 
-# Documento (OCR en el upload):
+# Documento (raster en upload; OCR después):
 curl -F "file=@tu-doc.pdf" http://localhost:8100/upload
+# por cada pages[].image_id → POST /infer/{image_id}
 ```
 
 | Archivo | Qué valida |

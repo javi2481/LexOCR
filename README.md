@@ -2,7 +2,7 @@
 
 SPA académica para **extraer texto de imágenes y documentos (PDF/TIFF)** y exportarlo a formatos **consumibles por un LLM** (JSON / Markdown / CSV / TXT + PNG anotado).
 
-**v1** usa OCR clásico (**PP-OCRv6 medium**), con pipeline nativo multipágina para PDF/TIFF. **v2** usará un **VLM**. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
+**v1** usa OCR clásico (**PP-OCRv6 medium**): las páginas de PDF/TIFF se rasterizan y se OCR-ean una a una. **v2** usará un **VLM**. Detalle: [docs/PRODUCT.md](docs/PRODUCT.md).
 
 **License:** [Apache License 2.0](LICENSE)
 
@@ -55,14 +55,21 @@ Unix:
 - Frontend: http://localhost:5173  
 - API: http://localhost:8100 (`/health`, `/docs`)
 
-Variables: [`.env.example`](.env.example) (`VITE_API_URL`, `PADDLE_PDX_CACHE_HOME`, opcional `PADDLEOCR_API_TOKEN` para SDK cloud futuro — el pipeline local no lo usa).
+Variables: [`.env.example`](.env.example) (`VITE_API_URL`, cache PaddleX; opcional `PADDLEOCR_API_TOKEN` para SDK cloud futuro — el pipeline local no lo usa).
+
+### Probar en 2 minutos
+
+1. Arrancá con `.\scripts\dev.ps1` y abrí http://localhost:5173  
+2. Subí `tests/fixtures/images/poster.avif` → **Run** → revisá `TRY` / `WERE` verticales  
+3. (Opcional) Subí un PDF corto (2–3 págs.): la UI rasteriza, auto-OCR página a página y arma la galería  
+4. Exportá **json** o **md** desde el header  
 
 ## Producto (resumen)
 
-- Motor **PP-OCRv6 medium** fijo.
-- **Imágenes:** PNG, JPEG, WEBP, GIF, BMP, ICO, PPM, AVIF (engine escena).
-- **Documentos:** PDF y TIFF multipágina vía `PaddleOCR.predict` nativo (engine documento: orientation + unwarping; tope **50** págs.; sin Poppler/`pypdfium2`).
-- Rescate angular por región; export JSON (`reading_order`, `page_index`), Markdown, CSV, TXT, PNG anotado.
+- Motor único **PP-OCRv6 medium** (engine escena; sin `doc_orientation` / unwarping).
+- **Imágenes:** PNG, JPEG, WEBP, GIF, BMP, ICO, PPM, AVIF → PNG pending → **Run** / `/infer` (rescate angular ON).
+- **Documentos:** PDF (raster `pypdfium2`) y TIFF (Pillow); tope **50** págs. / ≤ **20 MB** → N PNG pending → la UI auto-llama `/infer` por página (rescate OFF en PDF/TIFF).
+- Export JSON (`reading_order`, `page_index`), Markdown, CSV, TXT, PNG anotado.
 - Ejemplo JSON: [docs/examples/ocr-result.example.json](docs/examples/ocr-result.example.json).
 
 ## Checklist e2e manual
@@ -73,8 +80,8 @@ Con backend y frontend arriba:
 |------|-----------------|
 | `tests/fixtures/images/poster.avif` | **Run** → `TRY` ≈ −90°, `WERE` ≈ +90° |
 | `nube-manzana.png` / `nube-corazon.jpeg` | confAvg razonable; algunas `orientation ≠ 0` |
-| PDF corto (2–3 págs.) | Al subir: galería con N ítems `doc.pdf · p.k/n`, OCR ya hecho |
-| TIFF multipágina | Ídem; si Paddle no pagina, fallback Pillow por frame |
+| PDF corto (2–3 págs.) | Galería `doc.pdf · p.k/n`; UI auto-OCR; API deja páginas `pending` tras `/upload` |
+| TIFF multipágina | Ídem (frames vía Pillow) |
 | PDF > 50 págs. | HTTP 400 |
 | Export **md** / **json** | Incluyen `page_index` / `page_count` en páginas de documento |
 

@@ -13,7 +13,7 @@
 
 - [../README.md](../README.md) — entrada al proyecto (Apache-2.0)
 - [../backend/README.md](../backend/README.md) — API FastAPI
-- [../backend/app/README.md](../backend/app/README.md) — módulos OCR (escena / documento)
+- [../backend/app/README.md](../backend/app/README.md) — módulos OCR (engine escena, rescue, annotate)
 - [../frontend/README.md](../frontend/README.md) — UI
 - [../frontend/src/README.md](../frontend/src/README.md) — mapa de `src/`
 - [../frontend/src/components/README.md](../frontend/src/components/README.md) — componentes del studio
@@ -23,5 +23,6 @@
 
 ## Notas
 
-- Multipágina: nativo PP-OCRv6; sin libs PDF de terceros.
+- Multipágina: raster PDF con `pypdfium2` / TIFF con Pillow → `/infer` por página (la UI auto-dispara OCR en documentos).
+- Un solo engine PP-OCRv6 medium escena; rescate angular solo en imágenes.
 - Token cloud (`PADDLEOCR_API_TOKEN` en `.env`) es opcional/futuro; el studio local no lo usa.

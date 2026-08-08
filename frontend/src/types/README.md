@@ -6,7 +6,7 @@ Contratos TypeScript compartidos: `InferOptions`, `OCRResult`, `Region`, `Upload
 
 ## Decisiones clave
 
-- Sin union `tiny|small|medium` ni mode `document` en UI: el motor es medium fijo; el backend elige engine escena vs documento según formato.
+- Sin union `tiny|small|medium` ni mode `document` en UI: el motor es medium fijo (engine escena único en backend).
 - `ocr_tier` / `ocr_mode` en el resultado son metadatos de export (strings).
 - `page_index` / `page_count` / `source_format` opcionales (páginas de PDF/TIFF).
 - `conf_threshold` solo alimenta métricas / colores UI; no corta el motor.

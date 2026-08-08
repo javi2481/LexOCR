@@ -6,8 +6,8 @@ Studio web: galería (incluye páginas de PDF/TIFF), visor con boxes, ResultText
 
 ## Entrada / salida
 
-- **Entrada:** imágenes y **PDF** / TIFF (upload API). Un documento se expande a N ítems en la galería.
-- **Salida:** UI + descargas JSON / MD / CSV / TXT / PNG anotado (`page_index` en export de páginas).
+- **Entrada:** imágenes y **PDF** / TIFF (upload API). Un documento se expande a N ítems en la galería; la UI auto-dispara `/infer` por página.
+- **Salida:** UI + descargas JSON / MD / CSV / TXT / PNG anotado (`page_index` en export de páginas; export documento consolidado).
 
 ## Desarrollo
 

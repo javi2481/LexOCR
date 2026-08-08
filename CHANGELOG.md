@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-08 — Docs alineadas + limpieza de basura
+
+- Documentación (README, PRODUCT, mapas backend/frontend, fixtures) describe el pipeline real: raster PDF/TIFF + `/infer` por página.
+- Eliminado código muerto de “predict nativo multipágina” en `backend/app/ocr.py`.
+- `pypdfium2` declarado en `requirements.txt`; `.env.example` aclara cache PaddleX vs token cloud.
+
 ## 2026-08-07 — UX studio + PNG anotado sin re-OCR
 
 - Header: progreso por etapas (Preparar → Cargar → OCR), métricas destacadas al completar.
@@ -7,13 +13,13 @@
 - Export PNG anotado desde el `OCRResult` guardado (Pillow), sin volver a correr Paddle.
 - Feedback de carga en el botón PNG; limpieza de mockups `mejora_frontend/` y PDFs locales de `datos_prueba/`.
 
-## 2026-08-02 — PDF/TIFF multipágina vía PP-OCRv6
+## 2026-08-02 — PDF/TIFF multipágina (raster + infer)
 
-- Upload acepta PDF y TIFF; `PaddleOCR.predict` nativo con engine documento (`doc_orientation` + `unwarping`).
-- N páginas → N `image_id` + preview PNG + rescue; tope 50; sin libs PDF ajenas.
-- Frontend: accept `.pdf`, galería expandida `pages[]` (`page_index` / `page_count`).
+> Nota: la implementación real rasteriza con `pypdfium2`/Pillow y OCR via `/infer` por página (engine escena). No hay predict nativo multipágina ni engine documento con doc_ori/unwarping.
+
+- Upload acepta PDF y TIFF; N páginas → N `image_id` + PNG pending; tope 50.
+- Frontend: accept `.pdf`, galería expandida `pages[]` (`page_index` / `page_count`), auto-OCR en UI.
 - Token Official API (cloud) solo en `.env` local; HPI / SDK cloud fuera de este corte.
-- Docs/READMEs alineados (raíz, backend, frontend, fixtures, ejemplo JSON).
 
 ## 2026-08-02 — Higiene meta OCR → LLM
 

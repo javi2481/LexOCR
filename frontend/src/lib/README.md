@@ -2,12 +2,16 @@
 
 ## Qué hace
 
-Cliente HTTP, geometría de resultados, orden de lectura y serialización de export para LLM.
+Cliente HTTP, geometría de resultados, orden de lectura, etapas de pipeline UI y serialización de export (página o documento) para LLM.
 
 ## Módulos
 
 - `api.ts` — upload / infer / batch / health / annotated download; `DEFAULT_INFER_OPTIONS`
-- `exportResult.ts` — JSON (con `reading_order`), Markdown (`page_index` si aplica), CSV, TXT
+- `pipeline.ts` — etapas de busy del header (Preparar → Cargar → OCR)
+- `exportResult.ts` — JSON (con `reading_order`), Markdown (`page_index` si aplica), CSV, TXT (una página)
+- `exportDocument.ts` — export consolidado multipágina
+- `consolidate.ts` — une resultados de páginas de un documento
+- `documentGroups.ts` — agrupa ítems de galería por documento origen
 - `readingOrder.ts` — orden espacial de regiones
 - `resultLayout.ts` — layout SVG de ResultText
 - `files.ts` — accept (incl. `.pdf`), preview servidor, `isDocumentFile`
