@@ -38,6 +38,7 @@ export default function App() {
     selectNextInGroup,
     ocrOptions,
     busy,
+    busyStage,
     busyLabel,
     progress,
     progressPct,
@@ -184,6 +185,7 @@ export default function App() {
         images={images}
         selected={selected}
         busy={busy}
+        busyStage={busyStage}
         busyLabel={busyLabel}
         busyTimeLabel={busyTimeLabel}
         progress={progress}
@@ -252,11 +254,6 @@ export default function App() {
                   hoveredRegion={hoveredRegion}
                   onHoveredRegionChange={setHoveredRegion}
                   onScrollToRegion={scrollToRegion}
-                  busyLabel={busyLabel}
-                  progressIndeterminate={progressIndeterminate}
-                  progressPct={progressPct}
-                  progress={progress}
-                  busyTimeLabel={busyTimeLabel}
                 />
                 <ResultText
                   selected={selected}
@@ -270,11 +267,6 @@ export default function App() {
                   copied={copied}
                   onCopy={copyCleanText}
                   copyLabel="Copiar página"
-                  busyLabel={busyLabel}
-                  progressIndeterminate={progressIndeterminate}
-                  progressPct={progressPct}
-                  progress={progress}
-                  busyTimeLabel={busyTimeLabel}
                   resultLayout={resultLayout}
                   resultZoom={resultZoom}
                   onResultZoomChange={setResultZoom}
@@ -291,8 +283,6 @@ export default function App() {
                 open={wordsOpen}
                 onToggle={() => setWordsOpen((value) => !value)}
                 busy={busy}
-                busyLabel={busyLabel}
-                busyTimeLabel={busyTimeLabel}
                 hoveredRegion={hoveredRegion}
                 onHoveredRegionChange={setHoveredRegion}
                 onScrollToRegion={scrollToRegion}

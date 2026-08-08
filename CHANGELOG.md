@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-07 — UX studio + PNG anotado sin re-OCR
+
+- Header: progreso por etapas (Preparar → Cargar → OCR), métricas destacadas al completar.
+- Pan/zoom con rueda y arrastre en Input Image y Texto para LLM (`usePanZoom`).
+- Export PNG anotado desde el `OCRResult` guardado (Pillow), sin volver a correr Paddle.
+- Feedback de carga en el botón PNG; limpieza de mockups `mejora_frontend/` y PDFs locales de `datos_prueba/`.
+
 ## 2026-08-02 — PDF/TIFF multipágina vía PP-OCRv6
 
 - Upload acepta PDF y TIFF; `PaddleOCR.predict` nativo con engine documento (`doc_orientation` + `unwarping`).

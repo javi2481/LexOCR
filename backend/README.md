@@ -32,7 +32,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8100
 - `POST /infer/{image_id}` — re-OCR escena + rescue sobre PNG
 - `POST /infer/batch` — lista de ids (omite el origen documento crudo)
 - `GET /status/{image_id}`
-- `GET /export/{image_id}/annotated` — PNG con boxes (`save_to_img`)
+- `GET /export/{image_id}/annotated` — PNG con boxes desde el OCRResult guardado (sin re-OCR)
 
 ## Engines
 

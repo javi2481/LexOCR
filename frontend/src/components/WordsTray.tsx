@@ -16,8 +16,6 @@ type WordsTrayProps = {
   open: boolean;
   onToggle: () => void;
   busy: boolean;
-  busyLabel: string;
-  busyTimeLabel: string;
   hoveredRegion: number | null;
   onHoveredRegionChange: (id: number | null) => void;
   onScrollToRegion: (id: number) => void;
@@ -28,7 +26,7 @@ type WordsTrayProps = {
 
 export function WordsTray(props: WordsTrayProps) {
   const {
-    selected, regions, open, onToggle, busy, busyLabel, busyTimeLabel,
+    selected, regions, open, onToggle, busy,
     hoveredRegion, onHoveredRegionChange, onScrollToRegion, onUpdateRegionText,
     regionRefs, confThreshold,
   } = props;
@@ -48,7 +46,7 @@ export function WordsTray(props: WordsTrayProps) {
               {selected?.status === "error"
                 ? selected.error || "Error en inferencia"
                 : selected?.status === "processing" || busy
-                  ? `${busyLabel} (${busyTimeLabel})`
+                  ? "Procesando… mirá las etapas en el header."
                   : "Sin resultados aún. Ejecutá Run."}
             </p>
           )}

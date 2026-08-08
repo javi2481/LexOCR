@@ -14,6 +14,7 @@ import {
   isMultipageGroup,
 } from "../lib/documentGroups";
 import { isAcceptedFile, isDocumentFile, needsServerPreview } from "../lib/files";
+import type { BusyStage } from "../lib/pipeline";
 import type {
   HealthInfo,
   ImageItem,
@@ -22,6 +23,9 @@ import type {
   StudioView,
   UploadResponse,
 } from "../types/ocr";
+
+export type { BusyStage } from "../lib/pipeline";
+export { PIPELINE_STAGES } from "../lib/pipeline";
 
 function pagesFromUpload(
   file: File,
@@ -67,11 +71,23 @@ export function useStudioSession() {
   const [studioView, setStudioView] = useState<StudioView>("page");
   const [ocrOptions] = useState<InferOptions>(() => ({ ...DEFAULT_INFER_OPTIONS }));
   const [busy, setBusy] = useState(false);
+  const [busyStage, setBusyStage] = useState<BusyStage | null>(null);
   const [busyLabel, setBusyLabel] = useState("Infiriendo…");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [busyElapsedSec, setBusyElapsedSec] = useState(0);
   const [lastMs, setLastMs] = useState<number | null>(null);
   const [health, setHealth] = useState<HealthInfo | null>(null);
+
+  const setPhase = useCallback((stage: BusyStage, detail: string) => {
+    setBusyStage(stage);
+    setBusyLabel(detail);
+  }, []);
+
+  const endBusy = useCallback(() => {
+    setBusy(false);
+    setBusyStage(null);
+    setBusyLabel("Listo");
+  }, []);
 
   const selected = images.find((item) => item.localId === selectedId) ?? null;
   const documentGroups = useMemo(() => groupImages(images), [images]);
@@ -109,9 +125,24 @@ export function useStudioSession() {
     setSelectedId(activeGroup.members[idx + 1].localId);
   }, [activeGroup, selectedId]);
 
-  const progressPct =
-    progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
-  const progressIndeterminate = busy && (progress.total <= 1 || progress.done === 0);
+  const progressPct = (() => {
+    if (!busy || !busyStage) return 0;
+    if (busyStage === "prepare") return 8;
+    if (busyStage === "ingest") {
+      if (progress.total > 1) {
+        return Math.min(40, 18 + Math.round((progress.done / progress.total) * 22));
+      }
+      return 28;
+    }
+    // ocr
+    if (progress.total > 0) {
+      const unit = Math.max(progress.total, 1);
+      return Math.min(98, 42 + Math.round((progress.done / unit) * 56));
+    }
+    return 55;
+  })();
+  const progressIndeterminate =
+    busy && busyStage === "ocr" && (progress.total <= 1 || (progress.done === 0 && progress.total <= 1));
   const busyTimeLabel =
     busyElapsedSec < 60
       ? `${busyElapsedSec}s`
@@ -196,7 +227,8 @@ export function useStudioSession() {
     const trackDocs = docs.length > 0;
     if (trackDocs) {
       setBusy(true);
-      setBusyLabel(
+      setPhase(
+        "prepare",
         docs.length === 1
           ? "Preparando documento…"
           : `Preparando ${docs.length} documentos…`,
@@ -210,7 +242,7 @@ export function useStudioSession() {
           const isDoc = isDocumentFile(item.file);
           try {
             if (isDoc) {
-              setBusyLabel(`Rasterizando ${item.filename}…`);
+              setPhase("ingest", `Rasterizando ${item.filename}…`);
             }
             const response = await upload(item.file);
             const pages = pagesFromUpload(item.file, response, item.localId, item.groupId);
@@ -224,7 +256,7 @@ export function useStudioSession() {
                 for (let i = 0; i < pages.length; i++) {
                   const page = pages[i];
                   if (!page.id) continue;
-                  setBusyLabel(`Infiriendo p.${i + 1}/${pages.length}…`);
+                  setPhase("ocr", `OCR página ${i + 1} de ${pages.length}`);
                   updateImage(page.localId, { status: "processing", error: undefined });
                   try {
                     const result = await infer(page.id, ocrOptions);
@@ -273,12 +305,11 @@ export function useStudioSession() {
         }
       } finally {
         if (trackDocs) {
-          setBusy(false);
-          setBusyLabel("Infiriendo…");
+          endBusy();
         }
       }
     })();
-  }, [ocrOptions]);
+  }, [ocrOptions, setPhase, endBusy]);
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
@@ -310,8 +341,9 @@ export function useStudioSession() {
     try {
       let imageId = item.id;
       if (!imageId) {
-        setBusyLabel(
-          isDocumentFile(item.file) ? "Procesando documento…" : "Subiendo imagen…",
+        setPhase(
+          "ingest",
+          isDocumentFile(item.file) ? `Rasterizando ${item.filename}…` : `Subiendo ${item.filename}…`,
         );
         const response = await upload(item.file);
         if (response.pages && response.pages.length > 1) {
@@ -345,7 +377,7 @@ export function useStudioSession() {
           return page0.result;
         }
       }
-      setBusyLabel("Infiriendo OCR…");
+      setPhase("ocr", `Extrayendo texto · ${item.filename}`);
       const result = await infer(imageId, ocrOptions);
       updateImage(item.localId, { status: "completed", result, id: imageId });
       setLastMs(result.inference_time_ms);
@@ -360,14 +392,13 @@ export function useStudioSession() {
   const runSelected = async () => {
     if (!selected || busy) return;
     setBusy(true);
-    setBusyLabel("Preparando…");
+    setPhase("prepare", "Preparando inferencia…");
     setProgress({ done: 0, total: 1 });
     try {
       await runOne(selected);
       setProgress({ done: 1, total: 1 });
     } finally {
-      setBusy(false);
-      setBusyLabel("Infiriendo…");
+      endBusy();
     }
   };
 
@@ -377,7 +408,7 @@ export function useStudioSession() {
     );
     if (!pending.length || busy) return;
     setBusy(true);
-    setBusyLabel("Preparando lotes…");
+    setPhase("prepare", `Preparando lote · ${pending.length} ítem${pending.length === 1 ? "" : "s"}`);
     setProgress({ done: 0, total: pending.length });
     let doneCount = 0;
     const bumpProgress = () => {
@@ -389,7 +420,10 @@ export function useStudioSession() {
       const current = images.find((image) => image.localId === item.localId) ?? item;
       try {
         if (!current.id) {
-          setBusyLabel(`Subiendo ${ready.length + 1}/${pending.length}…`);
+          setPhase(
+            "ingest",
+            `Subiendo ${ready.length + 1} de ${pending.length} · ${current.filename}`,
+          );
           updateImage(current.localId, { status: "processing", error: undefined });
           const response = await upload(current.file);
           if (response.pages && response.pages.length > 1) {
@@ -448,7 +482,7 @@ export function useStudioSession() {
     const ids = ready.map((item) => item.id!).filter(Boolean);
     try {
       if (ids.length) {
-        setBusyLabel(`Infiriendo lote (${ids.length})…`);
+        setPhase("ocr", `OCR en lote · ${ids.length} imagen${ids.length === 1 ? "" : "es"}`);
         const results = await inferBatch(ids, ocrOptions);
         const byId = new Map(results.map((result) => [result.image_id, result]));
         for (const item of ready) {
@@ -459,7 +493,7 @@ export function useStudioSession() {
             bumpProgress();
           } else if (item.id) {
             try {
-              setBusyLabel(`Infiriendo ${doneCount + 1}/${pending.length}…`);
+              setPhase("ocr", `OCR ${doneCount + 1} de ${pending.length} · ${item.filename}`);
               await runOne(item);
             } catch {
               // Continuar con las demás imágenes.
@@ -473,7 +507,7 @@ export function useStudioSession() {
     } catch {
       for (const item of ready) {
         try {
-          setBusyLabel(`Infiriendo ${doneCount + 1}/${pending.length}…`);
+          setPhase("ocr", `OCR ${doneCount + 1} de ${pending.length} · ${item.filename}`);
           await runOne(item);
         } catch {
           // Continuar con las demás imágenes.
@@ -482,8 +516,7 @@ export function useStudioSession() {
       }
     }
     setProgress({ done: pending.length, total: pending.length });
-    setBusy(false);
-    setBusyLabel("Infiriendo…");
+    endBusy();
   };
 
   const clearAll = () => {
@@ -532,6 +565,7 @@ export function useStudioSession() {
     selectNextInGroup,
     ocrOptions,
     busy,
+    busyStage,
     busyLabel,
     progress,
     progressPct,

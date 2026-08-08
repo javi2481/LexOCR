@@ -10,11 +10,8 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from . import ocr
-from .ocr import (
-    _call_predict,
-    _run_paddle,
-    get_ocr,
-)
+from .annotate import render_annotated_from_result
+from .ocr import _run_paddle
 from .orientation import _rescue_oriented_lines
 from .parsing import _build_result
 from .schemas import BatchRequest, InferOptions, OCRResult
@@ -188,7 +185,7 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/export/{image_id}/annotated")
     def export_annotated(image_id: str):
-        """PNG con bounding boxes vía result.save_to_img() (API oficial)."""
+        """PNG con bounding boxes dibujados desde el OCRResult ya guardado (sin re-OCR)."""
         if image_id not in store:
             raise HTTPException(404, "Imagen no encontrada")
         item = store[image_id]
@@ -197,55 +194,16 @@ def register_routes(app: FastAPI) -> None:
             raise HTTPException(404, "Archivo no encontrado")
         if item.get("is_document_source"):
             raise HTTPException(400, "Exportá una página concreta, no el documento original")
-        raw_opts = item.get("last_options") or {}
-        try:
-            options = InferOptions(**raw_opts)
-        except Exception:
-            options = InferOptions()
-        engine = get_ocr()
-        try:
-            raw = _call_predict(engine, str(path), options)
-        except Exception as exc:
-            raise HTTPException(500, f"Error OCR al anotar: {exc}") from exc
-        if not raw:
-            raise HTTPException(404, "Sin resultado OCR para anotar")
+        result = item.get("result")
+        if not result or not isinstance(result, dict):
+            raise HTTPException(400, "Sin resultado OCR. Ejecutá Run antes de exportar PNG.")
         out_dir = ANNOTATED_DIR / image_id
-        if out_dir.exists():
-            for old in out_dir.iterdir():
-                try:
-                    old.unlink()
-                except Exception:
-                    pass
-        else:
-            out_dir.mkdir(parents=True, exist_ok=True)
-        pages = raw if isinstance(raw, list) else [raw]
-        saved = False
-        for page in pages:
-            if page is None:
-                continue
-            if hasattr(page, "save_to_img"):
-                try:
-                    page.save_to_img(str(out_dir))
-                    saved = True
-                except TypeError:
-                    page.save_to_img(save_path=str(out_dir))
-                    saved = True
-        if not saved:
-            raise HTTPException(501, "save_to_img no disponible en este resultado")
-        candidates = sorted(
-            [p for p in out_dir.iterdir() if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg")],
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        if not candidates:
-            candidates = sorted(
-                [p for p in out_dir.iterdir() if p.is_file()],
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-        if not candidates:
-            raise HTTPException(500, "No se generó imagen anotada")
-        out_file = candidates[0]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / "annotated.png"
+        try:
+            render_annotated_from_result(path, result, out_file)
+        except Exception as exc:
+            raise HTTPException(500, f"Error al generar PNG anotado: {exc}") from exc
         stem = Path(item.get("filename") or image_id).stem
         return FileResponse(
             out_file, media_type="image/png", filename=f"{stem}_annotated.png",

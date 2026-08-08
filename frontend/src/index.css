@@ -77,6 +77,25 @@ input:focus-visible,
   transition: border-color 150ms ease, background-color 150ms ease;
 }
 
+.metrics-strip--ready .metric-card--ready {
+  animation: metric-ready 420ms ease-out;
+}
+
+.metric-card {
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+@keyframes metric-ready {
+  0% {
+    transform: translateY(3px);
+    opacity: 0.55;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 /* Barra de progreso indeterminada (inferencia OCR sin % real) */
 .progress-track {
   overflow: hidden;
@@ -116,5 +135,9 @@ input:focus-visible,
     animation: none;
     width: 100%;
     opacity: 0.55;
+  }
+
+  .metrics-strip--ready .metric-card--ready {
+    animation: none;
   }
 }
